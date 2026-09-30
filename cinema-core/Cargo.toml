@@ -1,0 +1,7 @@
+[package]
+name = "cinema-core"
+version.workspace = true
+edition.workspace = true
+
+# Ядро видеоредактора. Без UI.
+[dependencies]
