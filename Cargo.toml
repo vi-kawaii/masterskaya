@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["libs/*"]
-exclude = ["v", "animeow", "lab", "dotfiles"]
+exclude = ["v", "animeow", "lab", "dotfiles", "hi", "la", "tv", "cinema"]
 
 [workspace.package]
 version = "0.1.0"
