@@ -1,0 +1,10 @@
+[package]
+name = "tv-ui"
+version.workspace = true
+edition.workspace = true
+
+# UI — опциональный слой. Пока пустой, ядро работает headless.
+[dependencies]
+tv-core = { path = "../tv-core" }
+bevy.workspace = true
+lab-app-shell.workspace = true

@@ -1,0 +1,7 @@
+[package]
+name = "tv-core"
+version.workspace = true
+edition.workspace = true
+
+# Ядро: захват / микширование / вывод видео. Без UI.
+[dependencies]
