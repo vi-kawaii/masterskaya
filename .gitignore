@@ -1,0 +1,27 @@
+# ─── Проекты (отдельные репозитории, клонируются рядом) ───
+/v/
+/animeow/
+/cinema/
+/hi/
+/la/
+/tv/
+/dotfiles/
+
+# ─── Инструмент (отдельный репозиторий) ───
+/lab/
+
+# ─── Артефакты сборки ───
+/target/
+**/target/
+
+# ─── Cargo.lock в libs (workspace держит один общий) ───
+/libs/**/Cargo.lock
+
+# ─── Локальное ───
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+.idea/
+.vscode/

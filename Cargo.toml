@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = ["libs/*"]
+exclude = ["v", "animeow", "lab", "dotfiles"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+bevy = "0.19.1"
+bevy_asset = "0.19.1"
+serde = { version = "1", features = ["derive"] }
+
+[profile.dev]
+debug = false
