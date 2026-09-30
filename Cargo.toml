@@ -7,8 +7,7 @@ edition = "2024"
 bevy = { version = "0.19.1", features = ["bevy_dev_tools"] }
 bevy_asset = "0.19.1"
 serde = { version = "1.0.229", features = ["derive"] }
+lab-app-shell = { path = "../libs/app-shell" }
 
-# Ускорение сборки в dev-режиме:
-# Отключаем отладочную информацию — сильно ускоряет компоновку
 [profile.dev]
 debug = false
