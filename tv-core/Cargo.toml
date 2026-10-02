@@ -5,3 +5,4 @@ edition.workspace = true
 
 # Ядро: захват / микширование / вывод видео. Без UI.
 [dependencies]
+libobs-simple = "8.0.1"
