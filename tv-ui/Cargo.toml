@@ -8,3 +8,7 @@ edition.workspace = true
 tv-core = { path = "../tv-core" }
 bevy.workspace = true
 lab-app-shell.workspace = true
+gpui-kit = "0.7.0"
+serde = { version = "1.0.229", features = ["derive"] }
+smol = "2.0.2"
+rust-embed = "8.12.0"

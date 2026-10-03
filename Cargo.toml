@@ -12,3 +12,7 @@ lab-app-shell = { path = "../libs/app-shell" }
 
 [profile.dev]
 debug = false
+
+[workspace.metadata]
+# Указываем дефолтный бинарник/пакет для запуска из корня
+default-run = "tv-ui"
