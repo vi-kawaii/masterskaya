@@ -3,12 +3,15 @@ name = "tv-ui"
 version.workspace = true
 edition.workspace = true
 
-# UI — опциональный слой. Пока пустой, ядро работает headless.
 [dependencies]
 tv-core = { path = "../tv-core" }
-bevy.workspace = true
-lab-app-shell.workspace = true
-gpui-kit = "0.7.0"
 serde = { version = "1.0.229", features = ["derive"] }
-smol = "2.0.2"
-rust-embed = "8.12.0"
+ron = "0.12.2"
+
+[dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
+]
