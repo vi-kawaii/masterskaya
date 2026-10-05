@@ -1,0 +1,9 @@
+[package]
+name = "pen-ui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+pen-core = { path = "../pen-core" }
+bevy.workspace = true
+lab-app-shell.workspace = true

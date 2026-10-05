@@ -1,0 +1,6 @@
+[package]
+name = "pen-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

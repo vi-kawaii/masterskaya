@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["pen-core", "pen-ui"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+bevy = { version = "0.19.1", features = ["bevy_dev_tools"] }
+lab-app-shell = { path = "../libs/app-shell" }
+
+[profile.dev]
+debug = false
