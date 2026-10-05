@@ -1,14 +1,19 @@
-use bevy::prelude::*;
-use lab_app_shell::{build_app, AppShellConfig};
+use iced::widget::text;
+use iced::{Element, Task};
 
-fn main() {
-    println!("pen-ui starting...");
+fn main() -> iced::Result {
+    iced::application(|| (), update, view)
+        .title("pen")
+        .run()
+}
 
-    let mut app = build_app(AppShellConfig {
-        title: "pen".into(),
-        clear_color: Color::srgb(0.1, 0.1, 0.12),
-        ..default()
-    });
+#[derive(Debug, Clone)]
+enum Message {}
 
-    app.run();
+fn update(_state: &mut (), _message: Message) -> Task<Message> {
+    Task::none()
+}
+
+fn view(_state: &()) -> Element<'_, Message> {
+    text("pen — iced is alive").into()
 }
