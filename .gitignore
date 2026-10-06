@@ -1,28 +1,28 @@
-# ─── Проекты (отдельные репозитории, клонируются рядом) ───
-/v/
-/animeow/
-/cinema/
-/hi/
-/la/
-/tv/
-/dotfiles/
-/pen/
-
-# ─── Инструмент (отдельный репозиторий) ───
-/lab/
-
-# ─── Артефакты сборки ───
+# Rust
 /target/
 **/target/
+**/*.rs.bk
 
-# ─── Cargo.lock в libs (workspace держит один общий) ───
-/libs/**/Cargo.lock
+# Cargo.lock НЕ игнорируем — он должен быть в репо (бинарные крейты)
 
-# ─── Локальное ───
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.iml
+
+# OS
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Логи
 *.log
+
+# Временные файлы
 *.tmp
-*.swp
-.idea/
-.vscode/
+*.bak
+
+# OBS (тяжёлые бинарники, не коммитим)
+tv/obs-build/
