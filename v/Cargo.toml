@@ -1,13 +1,11 @@
 [package]
 name = "v"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-bevy = { version = "0.19.1", features = ["bevy_dev_tools"] }
-bevy_asset = "0.19.1"
-serde = { version = "1.0.229", features = ["derive"] }
+bevy = { workspace = true, features = ["bevy_dev_tools"] }
+bevy_asset.workspace = true
+serde.workspace = true
 lab-app-shell = { path = "../libs/app-shell" }
-
-[profile.dev]
-debug = false
+naga = { version = "27", features = ["termcolor"] }

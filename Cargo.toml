@@ -1,16 +1,32 @@
 [workspace]
 resolver = "2"
-members = ["libs/*"]
-exclude = ["v", "animeow", "lab", "dotfiles", "hi", "la", "tv", "cinema", "pen"]
+members = [
+    "libs/*",
+    "animeow",
+    "cinema/cinema-core",
+    "cinema/cinema-ui",
+    "la/la-core",
+    "la/la-ui",
+    "pen/pen-core",
+    "pen/pen-ui",
+    "tv/tv-core",
+    "tv/tv-ui",
+    "v",
+    "hi",
+    "lab",
+]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 
 [workspace.dependencies]
-bevy = "0.19.1"
+bevy = { version = "0.19.1", features = ["bevy_dev_tools"] }
 bevy_asset = "0.19.1"
 serde = { version = "1", features = ["derive"] }
+ron = "0.12"
+lab-app-shell = { path = "libs/app-shell" }
+naga = { version = "27", features = ["termcolor"] }
 
 [profile.dev]
 debug = false

@@ -2,11 +2,12 @@
 name = "tv-ui"
 version.workspace = true
 edition.workspace = true
+default-run = "tv-ui"
 
 [dependencies]
 tv-core = { path = "../tv-core" }
-serde = { version = "1.0.229", features = ["derive"] }
-ron = "0.12.2"
+serde.workspace = true
+ron.workspace = true
 
 [dependencies.windows]
 version = "0.62"

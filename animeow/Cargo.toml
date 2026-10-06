@@ -1,15 +1,12 @@
 [package]
 name = "animeow"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-bevy = { version = "0.19.1", features = ["bevy_dev_tools"] }
-bevy_asset = "0.19.1"
+bevy = { workspace = true, features = ["bevy_dev_tools"] }
+bevy_asset.workspace = true
 blake3 = { version = "1.8", features = ["pure"] }
 avian3d = "0.7"
 bevy_asset_loader = "0.27"
 lab-app-shell = { path = "../libs/app-shell" }
-
-[profile.dev]
-debug = false

@@ -1,13 +1,10 @@
 [package]
 name = "hi"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
 gpui-kit = "0.6"
 anyhow = "1.0"
 redb = "4.3.0"
-serde = { version = "1.0.229", features = ["derive"] }
-
-[profile.dev]
-debug = false
+serde.workspace = true

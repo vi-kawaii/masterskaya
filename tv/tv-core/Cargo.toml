@@ -8,7 +8,7 @@ libobs = "5.0.1"
 libobs-simple = "8.0.1"
 libobs-wrapper = "9.0.4"
 libobs-simple-macro = "7.0.0"
-ron = "0.12.2"
-serde = { version = "1.0.229", features = ["derive"] }
+ron.workspace = true
+serde.workspace = true
 paste = "1.0"
 log = "0.4"
