@@ -1,0 +1,12 @@
+[package]
+name = "lab"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "lab"
+path = "src/main.rs"
+
+[dependencies]
+walkdir = "2"
+arboard = "3"
