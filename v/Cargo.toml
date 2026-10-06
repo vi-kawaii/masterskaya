@@ -1,0 +1,13 @@
+[package]
+name = "v"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = { version = "0.19.1", features = ["bevy_dev_tools"] }
+bevy_asset = "0.19.1"
+serde = { version = "1.0.229", features = ["derive"] }
+lab-app-shell = { path = "../libs/app-shell" }
+
+[profile.dev]
+debug = false
