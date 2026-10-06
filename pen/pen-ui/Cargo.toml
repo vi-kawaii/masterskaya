@@ -1,0 +1,10 @@
+[package]
+name = "pen-ui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+iced = { version = "0.14", default-features = false, features = ["tiny-skia", "thread-pool"] }
+pen-core = { version = "0.1.0", path = "../pen-core" }
+lyon = "1.0.19"
+bytemuck = { version = "1.25.2", features = ["derive"] }
