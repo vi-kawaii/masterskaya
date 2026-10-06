@@ -1,0 +1,11 @@
+[package]
+name = "la-ui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+la-core = { path = "../la-core" }
+bevy.workspace = true
+lab-app-shell.workspace = true
+iced = { version = "0.14.0", features = ["canvas", "image"] }
+iced_audio = "0.17.1"
