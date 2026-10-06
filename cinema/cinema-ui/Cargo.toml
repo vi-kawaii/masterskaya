@@ -1,0 +1,10 @@
+[package]
+name = "cinema-ui"
+version.workspace = true
+edition.workspace = true
+
+# UI — опциональный слой. Пока пустой, ядро работает headless.
+[dependencies]
+cinema-core = { path = "../cinema-core" }
+bevy.workspace = true
+lab-app-shell.workspace = true
