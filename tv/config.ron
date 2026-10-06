@@ -1,0 +1,4 @@
+(
+    game_capture_name: "GameCaptureSource",
+    overlay_path: "assets/overlay.png",
+)

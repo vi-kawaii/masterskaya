@@ -1,0 +1,17 @@
+[package]
+name = "tv-ui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tv-core = { path = "../tv-core" }
+serde = { version = "1.0.229", features = ["derive"] }
+ron = "0.12.2"
+
+[dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
+]

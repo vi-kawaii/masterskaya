@@ -1,0 +1,6 @@
+# Стандартное для Rust
+/target/
+
+# Нативные бинарники OBS, которые скачивает cargo-obs-build
+/.obs/
+/obs-build/

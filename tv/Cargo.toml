@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = ["tv-core", "tv-ui"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+bevy = { version = "0.19.1", features = ["bevy_dev_tools"] }
+lab-app-shell = { path = "../libs/app-shell" }
+
+[profile.dev]
+debug = false
+
+[workspace.metadata]
+# Указываем дефолтный бинарник/пакет для запуска из корня
+default-run = "tv-ui"
