@@ -4,6 +4,7 @@ pub mod hud;
 pub mod move_;
 
 use crate::states::GameState;
+use avian3d::prelude::*;
 use bevy::prelude::*;
 
 pub struct GamePlugin;
@@ -35,12 +36,16 @@ fn setup_game(
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.8, -0.5, 0.0)),
     ));
 
-    // Пол
+    // Пол — теперь с физикой.
+    // Визуально: 50x50, толщина 0.2. Коллайдер — cuboid по полуразмерам.
+    // Верхняя грань на y = 0.
     commands.spawn((
         Ground,
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(50.0, 50.0))),
+        RigidBody::Static,
+        Collider::cuboid(25.0, 0.1, 25.0),
+        Mesh3d(meshes.add(Cuboid::new(50.0, 0.2, 50.0))),
         MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
-        Transform::from_xyz(0.0, 0.0, 0.0),
+        Transform::from_xyz(0.0, -0.1, 0.0),
     ));
 }
 

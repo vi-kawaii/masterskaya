@@ -1,12 +1,12 @@
 use bevy::prelude::{Component, Vec3};
 
 /// Линейная скорость персонажа (м/с).
-/// Используется кинематическим контроллером (следующий заход).
+/// Заменена на avian LinearVelocity в controller/player.rs.
+/// Оставлена для совместимости — потом удалить.
 #[derive(Component, Default)]
 pub struct Velocity(pub Vec3);
 
-/// Базовые скорости для locomotion. Пока берём из GameSettings,
-/// но позже можно будет иметь разные для игрока / NPC / ботов.
+/// Базовые скорости для locomotion.
 #[derive(Component)]
 pub struct MovementStats {
     pub walk_speed: f32,
@@ -24,7 +24,7 @@ impl Default for MovementStats {
     }
 }
 
-/// Здоровье. Компонент общий для игрока, NPC, ботов.
+/// Здоровье. Общее для игрока, NPC, ботов.
 #[derive(Component)]
 pub struct Health {
     pub current: f32,
@@ -39,3 +39,8 @@ impl Default for Health {
         }
     }
 }
+
+/// Стоит ли персонаж на земле (raycast вниз).
+/// Пишется системой ground_check в FixedUpdate.
+#[derive(Component, Default)]
+pub struct Grounded(pub bool);

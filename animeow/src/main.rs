@@ -1,4 +1,5 @@
 mod actor;
+mod assets;
 mod controller;
 mod core;
 mod modes;
@@ -7,6 +8,7 @@ mod types;
 
 use bevy::prelude::*;
 
+use bevy_asset_loader::prelude::*;
 use lab_app_shell::{build_app, AppShellConfig};
 use states::{GameState, InGameState};
 
@@ -21,6 +23,11 @@ fn main() {
 
     app.init_state::<GameState>()
         .add_sub_state::<InGameState>()
+        .add_loading_state(
+            LoadingState::new(GameState::Loading)
+                .continue_to_state(GameState::InGame)
+                .load_collection::<assets::GameAssets>(),
+        )
         .add_plugins((
             core::CorePlugin,
             modes::ModesPlugin,

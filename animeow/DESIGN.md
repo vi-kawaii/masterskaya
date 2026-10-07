@@ -29,8 +29,8 @@ NPC с AI, диалогами, квестами.
 2. Технологический стек
    Слой Решение Обоснование
    Движок Bevy 0.19.1 Уже в проекте
-   Физика avian3d Кинематический персонаж + динамика + raycast-vehicle
-   Загрузка ассетов bevy_asset_loader / AssetServer Асинхронная подгрузка чанков и моделей
+   Физика avian3d 0.7 Кинематический персонаж + динамика + raycast-vehicle
+   Загрузка ассетов bevy_asset_loader 0.27 Асинхронная подгрузка чанков и моделей
    Анимации glTF (.glb) + AnimationPlayer Стандарт Bevy (единый пайплайн через Blender)
    Навигация своя (waypoint/сетка), позже navmesh Готовых под 0.19 нет
    UI bevy_ui Не плодить зависимости
@@ -67,6 +67,8 @@ types.rs # общие компоненты/ресурсы
 core/ # фундамент
 camera.rs # CameraRig, режимы
 input.rs # абстракция ввода
+physics.rs # PhysicsPlugins + Gravity
+debug.rs # отладочный текст с координатами
 save.rs # save/load
 audio.rs # аудио-менеджер
 world/ # мир
@@ -116,13 +118,16 @@ LOD для дальних объектов.
 Освещение: DirectionalLight + динамические источники, тени в ближней зоне.
 
 4.2. Персонаж
-Кинематический контроллер (не rigidbody).
+Кинематический контроллер на avian3d (`RigidBody::Kinematic` +
+`CustomPositionIntegration` + `MoveAndSlide`).
 
 Ввод: WASD относительно направления камеры, спринт, прыжок, гравитация.
 
 Состояния locomotion: idle / walk / run / sprint / jump / fall / land.
 
 Поворот: плавный Quat::slerp в сторону движения.
+
+Grounded — через cast_move из центра капсулы вниз.
 
 4.3. Камера
 CameraRig (родитель) + Camera3d (ребёнок).
@@ -234,12 +239,18 @@ HUD: HP, стамина, патроны, миникарта, компас, кв�
 осталось: зум, коллизия, сглаживание)
 
 ☑ core/input.rs: абстракция ввода (WASD, спринт, прыжок)
-☑ actor/character.rs: общие компоненты (Health, MovementStats, Velocity)
-[~] controller/player.rs: кинематический контроллер
-(сделано: чтение InputState, движение относительно камеры, плавный разгон и поворот через FixedUpdate;
-осталось: гравитация, прыжок, состояния падения)
+☑ actor/character.rs: общие компоненты (Health, MovementStats, Grounded)
+☑ core/physics.rs: PhysicsPlugins + Gravity
+☑ modes/loading.rs: реальная загрузка через bevy_asset_loader
+☑ assets.rs: GameAssets (пока пусто)
+☑ controller/player.rs: кинематический контроллер на avian3d
+   (сделано: движение относительно камеры, гравитация, прыжок,
+    grounded через MoveAndSlide + cast_move)
+☑ core/debug.rs: отладочный текст с координатами
+☑ modes/game/mod.rs: пол получил RigidBody::Static + Collider
 
-□ states.rs: locomotion-стейты (idle/run/jump/fall)
+[ ] states.rs: locomotion-стейты (idle/run/jump/fall)
+[ ] Модель персонажа (.glb) — ждёт ассет
 
 Этап 3. Мир и стриминг
 Цель: уровень, текстуры, тени, чанки.
@@ -247,7 +258,6 @@ HUD: HP, стамина, патроны, миникарта, компас, кв�
 □ world/chunk.rs: структура чанка
 □ world/streaming.rs: подгрузка/выгрузка по радиусу
 □ world/level.rs: сборка уровня
-□ modes/loading.rs: реальный прогресс загрузки через AssetServer
 □ PBR-материалы, тени, освещение
 
 Этап 4. Бой + AI + HUD
@@ -305,3 +315,26 @@ HUD: HP, стамина, патроны, миникарта, компас, кв�
    modes/vehicle.rs, modes/game/mod.rs — переписать под 3D-меши.
    modes/loading.rs — заменить таймер на реальную загрузку.
    actor/*, controller/bot.rs, modes/game/{dialog,fight,hud,move_}.rs — пустые, наполнять по этапам.
+
+9. Журнал решений
+   Короткие записи, почему сделано именно так. Не удалять — контекст.
+
+Loading через bevy_asset_loader. Таймер убран. LoadingState сам
+переключает GameState, когда ассеты загружены. Это соответствует
+ARCHITECTURE.md §«Loading — это стейт, а не таймер».
+
+Кинематический контроллер через avian3d MoveAndSlide.
+RigidBody::Kinematic + CustomPositionIntegration: avian решает
+коллизии (sweep + slide), но не двигает тело сам — Transform меняем
+мы. Линейную скорость храним в LinearVelocity, обновляем в
+character_movement. Так сохраняется полный контроль над движением,
+что и заявлено в §4.2.
+
+Grounded через cast_move, а не cast_ray. Стреляем из центра
+капсулы вниз на 0.95 м (полвысоты капсулы 0.9 + запас). Раньше
+использовали cast_ray из точки translation - 1.0 — это было ниже
+низа капсулы и не находило пол.
+
+Пол должен быть RigidBody::Static + Collider. Изначально пол был
+только визуалом (Mesh3d(Plane3d)) без коллайдера, из-за чего
+move_and_slide не находил землю и игрок падал в −∞.
