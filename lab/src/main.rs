@@ -1,6 +1,7 @@
 mod commit;
 mod dump;
 mod paste;
+mod run;
 
 use std::process::ExitCode;
 
@@ -16,18 +17,21 @@ fn main() -> ExitCode {
     let cmd = match std::env::args().nth(1) {
         Some(c) => c,
         None => {
-            eprintln!("usage: lab <dump|paste|commit>");
+            eprintln!("usage: lab <dump|paste|commit|run>");
             return ExitCode::FAILURE;
         }
     };
+
+    let arg = std::env::args().nth(2);
 
     let result = match cmd.as_str() {
         "dump" => dump::run(&cwd),
         "paste" => paste::run(&cwd),
         "commit" => commit::run(&cwd),
+        "run" => run::run(&cwd, arg.as_deref()),
         other => {
             eprintln!("❌ lab: неизвестная команда '{other}'");
-            eprintln!("   Доступно: dump, paste, commit");
+            eprintln!("   Доступно: dump, paste, commit, run");
             return ExitCode::FAILURE;
         }
     };

@@ -10,3 +10,4 @@ path = "src/main.rs"
 [dependencies]
 walkdir = "2"
 arboard = "3"
+dialoguer = "0.12"
