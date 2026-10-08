@@ -242,15 +242,18 @@ HUD: HP, стамина, патроны, миникарта, компас, кв�
 ☑ actor/character.rs: общие компоненты (Health, MovementStats, Grounded)
 ☑ core/physics.rs: PhysicsPlugins + Gravity
 ☑ modes/loading.rs: реальная загрузка через bevy_asset_loader
-☑ assets.rs: GameAssets (пока пусто)
+☑ assets.rs: GameAssets (модель персонажа anime-girl.glb)
 ☑ controller/player.rs: кинематический контроллер на avian3d
    (сделано: движение относительно камеры, гравитация, прыжок,
     grounded через MoveAndSlide + cast_move)
 ☑ core/debug.rs: отладочный текст с координатами
 ☑ modes/game/mod.rs: пол получил RigidBody::Static + Collider
+☑ Модель персонажа (.glb) — anime-girl.glb загружается через
+   WorldAssetRoot как ребёнок физической капсулы
 
 [ ] states.rs: locomotion-стейты (idle/run/jump/fall)
-[ ] Модель персонажа (.glb) — ждёт ассет
+[ ] Разворот модели в сторону движения (Quat::slerp)
+[ ] Анимации персонажа (AnimationPlayer + выбор клипа по состоянию)
 
 Этап 3. Мир и стриминг
 Цель: уровень, текстуры, тени, чанки.
@@ -338,3 +341,17 @@ Grounded через cast_move, а не cast_ray. Стреляем из цент�
 Пол должен быть RigidBody::Static + Collider. Изначально пол был
 только визуалом (Mesh3d(Plane3d)) без коллайдера, из-за чего
 move_and_slide не находил землю и игрок падал в −∞.
+
+Модель персонажа — WorldAssetRoot как ребёнок физической капсулы.
+Родитель несёт RigidBody::Kinematic + Collider::capsule + Transform,
+им управляет character_movement. Ребёнок — только визуал
+(WorldAssetRoot + локальное смещение по Y). Так физика и визуал
+развязаны: коллайдер не зависит от размеров модели, а модель можно
+двигать/масштабировать/поворачивать локально, не трогая физику.
+Bevy 0.19: Scene → WorldAsset, SceneRoot → WorldAssetRoot.
+
+Папка ассетов — assets/, не art/. Bevy по умолчанию ищет ассеты в
+<CARGO_MANIFEST_DIR>/assets. Если назвать папку иначе (art/, models/),
+нужно переопределять AssetPlugin.file_path. Проще следовать
+соглашению движка. Исходники моделей (Blender-проекты) при
+необходимости держать отдельно, например в art-src/.
