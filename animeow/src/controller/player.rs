@@ -1,4 +1,5 @@
 use crate::actor::character::{Grounded, MovementStats};
+use crate::assets::GameAssets;
 use crate::core::input::InputState;
 use crate::states::{GameState, InGameState};
 use crate::types::{GameSettings, Player};
@@ -20,23 +21,30 @@ impl Plugin for PlayerControllerPlugin {
     }
 }
 
-fn spawn_player(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    commands.spawn((
-        Player,
-        Grounded(false),
-        MovementStats::default(),
-        RigidBody::Kinematic,
-        CustomPositionIntegration,
-        Collider::capsule(0.4, 1.0),
-        Transform::from_xyz(0.0, 2.0, 0.0),
-        Mesh3d(meshes.add(Cuboid::new(0.8, 2.0, 0.8))),
-        MeshMaterial3d(materials.add(Color::srgb(1.0, 0.5, 0.0))),
-        LinearVelocity::default(),
-    ));
+/// Спавним «невидимую капсулу» — родителя с физикой,
+/// и вешаем на неё glTF-сцену как визуал.
+fn spawn_player(mut commands: Commands, assets: Res<GameAssets>) {
+    commands
+        .spawn((
+            Player,
+            Grounded(false),
+            MovementStats::default(),
+            RigidBody::Kinematic,
+            CustomPositionIntegration,
+            Collider::capsule(0.4, 1.0),
+            Transform::from_xyz(0.0, 2.0, 0.0),
+            LinearVelocity::default(),
+            Visibility::default(),
+        ))
+        .with_children(|parent| {
+            // glTF-сцена садится в начало координат родителя.
+            // y = -0.9 — если модель стоит «ногами в 0», а центр капсулы
+            // должен быть в середине тела. Подгони под свою модель.
+            parent.spawn((
+                WorldAssetRoot(assets.player_scene.clone()),
+                Transform::from_xyz(0.0, -0.9, 0.0),
+            ));
+        });
 }
 
 fn character_movement(
@@ -79,12 +87,10 @@ fn character_movement(
             settings.run_speed
         };
 
-        // Горизонталь.
         let target_velocity = target_dir * speed;
         velocity.x = target_velocity.x;
         velocity.z = target_velocity.z;
 
-        // Вертикаль: гравитация + прыжок.
         if grounded.0 && velocity.y <= 0.0 {
             velocity.y = 0.0;
             if input.jump_pressed {
@@ -94,7 +100,6 @@ fn character_movement(
             velocity.y += settings.gravity * dt_secs;
         }
 
-        // Move and slide.
         let filter = SpatialQueryFilter::from_excluded_entities([entity]);
         let output = move_and_slide.move_and_slide(
             collider,
@@ -110,8 +115,6 @@ fn character_movement(
         transform.translation = output.position;
         velocity.0 = output.projected_velocity;
 
-        // Grounded: cast_move из центра капсулы вниз.
-        // Полная высота капсулы 1.8, половина 0.9. Смещение 0.95 — чуть больше половины.
         let hit = move_and_slide.cast_move(
             collider,
             transform.translation,

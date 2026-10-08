@@ -1,10 +1,11 @@
 use bevy::prelude::*;
 use bevy_asset_loader::prelude::*;
 
-/// Всё, что грузим на старте. Пока пусто — модель добавим позже.
-/// Как только появится .glb — раскомментируй поля и положи файл в assets/models/.
+/// Всё, что грузим на старте.
+/// Модель персонажа лежит в `assets/models/anime-girl.glb`.
+/// `#Scene0` — первая сцена внутри glTF (обычно корневой узел).
 #[derive(AssetCollection, Resource)]
 pub struct GameAssets {
-    // #[asset(path = "models/player.glb#Scene0")]
-    // pub player_scene: Handle<Scene>,
+    #[asset(path = "models/anime-girl.glb#Scene0")]
+    pub player_scene: Handle<WorldAsset>,
 }
