@@ -23,6 +23,7 @@ impl Plugin for CameraPlugin {
 
 /// Спавним риг (позиция «плеча») и камеру как его ребёнка.
 /// Позиция рига пересчитывается каждый кадр системой follow_player.
+/// MSAA отключён, чтобы не тратить FPS на сглаживание.
 fn spawn_camera_rig(mut commands: Commands) {
     let rig = commands
         .spawn((
@@ -33,7 +34,11 @@ fn spawn_camera_rig(mut commands: Commands) {
         .id();
 
     commands.entity(rig).with_children(|parent| {
-        parent.spawn((Camera3d::default(), Transform::from_xyz(0.0, 0.0, 0.0)));
+        parent.spawn((
+            Camera3d::default(),
+            Msaa::Off,
+            Transform::from_xyz(0.0, 0.0, 0.0),
+        ));
     });
 }
 

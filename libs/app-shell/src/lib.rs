@@ -1,27 +1,16 @@
 //! lab-app-shell — общий каркас Bevy-приложения для мастерской.
-//!
-//! Инкапсулирует то, что повторяется в каждом проекте:
-//! - borderless fullscreen окно на текущем мониторе
-//! - FPS-оверлей с настраиваемым цветом и размером
-//! - ClearColor
-//! - заголовок окна
-//!
-//! Проект создаёт App через `build_app(config)` и добавляет свои
-//! плагины, стейты, системы поверх.
+
+use std::num::NonZero;
 
 use bevy::dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin};
 use bevy::prelude::*;
-use bevy::window::{MonitorSelection, WindowMode};
+use bevy::window::{MonitorSelection, PresentMode, WindowMode};
+use bevy::winit::{UpdateMode, WinitSettings};
 
-/// Конфигурация каркаса. Всё, что может отличаться между проектами.
 pub struct AppShellConfig {
-    /// Заголовок окна.
     pub title: String,
-    /// Цвет фона по умолчанию.
     pub clear_color: Color,
-    /// Размер шрифта FPS-оверлея в пикселях.
     pub fps_font_size: f32,
-    /// Цвет текста FPS-оверлея.
     pub fps_color: Color,
 }
 
@@ -36,31 +25,27 @@ impl Default for AppShellConfig {
     }
 }
 
-/// Собирает готовый `App` с общим каркасом.
-///
-/// Проект дальше добавляет свои плагины, стейты, системы:
-///
-/// ```ignore
-/// let mut app = lab_app_shell::build_app(AppShellConfig {
-///     title: "VTuber".into(),
-///     clear_color: Color::BLACK,
-///     ..default()
-/// });
-/// app.init_state::<AppState>();
-/// app.add_plugins(MyPlugins);
-/// app.run();
-/// ```
 pub fn build_app(config: AppShellConfig) -> App {
     let mut app = App::new();
 
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
         primary_window: Some(Window {
             title: config.title,
+            // Возвращаем BorderlessFullscreen — падений нет.
             mode: WindowMode::BorderlessFullscreen(MonitorSelection::Current),
+            // AutoNoVsync: отключает vsync, но без риска tearing.
+            present_mode: PresentMode::Immediate,
+            desired_maximum_frame_latency: NonZero::new(1),
             ..default()
         }),
         ..default()
     }));
+
+    // Цикл событий не спит — гоним кадры максимально часто.
+    app.insert_resource(WinitSettings {
+        focused_mode: UpdateMode::Continuous,
+        unfocused_mode: UpdateMode::reactive_low_power(std::time::Duration::from_millis(16)),
+    });
 
     app.add_plugins(FpsOverlayPlugin {
         config: FpsOverlayConfig {

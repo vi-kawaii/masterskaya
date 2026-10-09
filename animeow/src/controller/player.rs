@@ -17,6 +17,7 @@ impl Plugin for PlayerControllerPlugin {
                     .chain()
                     .run_if(in_state(InGameState::Playing)),
             )
+            .add_systems(Update, flatten_materials.run_if(in_state(InGameState::Playing)))
             .add_systems(OnExit(GameState::InGame), cleanup_player);
     }
 }
@@ -124,6 +125,21 @@ fn character_movement(
             &filter,
         );
         grounded.0 = hit.is_some();
+    }
+}
+
+/// Устанавливает `unlit: true` для всех материалов модели игрока,
+/// чтобы она не реагировала на свет.
+fn flatten_materials(
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    query: Query<&MeshMaterial3d<StandardMaterial>>,
+) {
+    for material_handle in &query {
+        if let Some(mut material) = materials.get_mut(&material_handle.0) {
+            if !material.unlit {
+                material.unlit = true;
+            }
+        }
     }
 }
 
