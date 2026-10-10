@@ -6,29 +6,54 @@ pub struct Player;
 #[derive(Component)]
 pub struct Vehicle;
 
+/// Маркер узла с моделью персонажа — ребёнок физической капсулы.
+/// Вращается отдельной системой, чтобы не трогать физику.
+#[derive(Component)]
+pub struct PlayerModel;
+
+/// Целевой yaw модели (радианы). Пишет `character_movement`,
+/// читает `rotate_model_towards_movement`.
+#[derive(Component, Default)]
+pub struct DesiredYaw(pub f32);
+
 /// Корень TPS-камеры. Родитель `Camera3d`.
-/// Позиция — «плечо» игрока, поворот — yaw/pitch от мыши.
-/// Коллизия и сглаживание — в `core/camera.rs` (Этап 2).
+///
+/// Разделены «текущее» и «цель»: мышь/колесо двигают target_*,
+/// система `orbit_camera` плавно ведёт текущие значения к ним.
 #[derive(Component)]
 pub struct CameraRig {
-    /// Горизонтальный угол (радианы)
     pub yaw: f32,
-    /// Вертикальный угол (радианы), ограничен pitch_min..pitch_max
     pub pitch: f32,
-    /// Дистанция от «плеча» до камеры (м)
     pub distance: f32,
-    /// Минимальный pitch (взгляд вниз)
+
+    pub target_yaw: f32,
+    pub target_pitch: f32,
+    pub target_distance: f32,
+
+    pub min_distance: f32,
+    pub max_distance: f32,
+    pub zoom_step: f32,
     pub pitch_min: f32,
-    /// Максимальный pitch (взгляд вверх)
     pub pitch_max: f32,
 }
 
 impl Default for CameraRig {
     fn default() -> Self {
+        // Стартовая дистанция 4.5 м — на 1.8-метровом персонаже
+        // смотрится естественно. 6.0 была «широко», персонаж мелкий.
+        let yaw = 0.0;
+        let pitch = -0.3;
+        let distance = 4.5;
         Self {
-            yaw: 0.0,
-            pitch: -0.3,
-            distance: 6.0,
+            yaw,
+            pitch,
+            distance,
+            target_yaw: yaw,
+            target_pitch: pitch,
+            target_distance: distance,
+            min_distance: 2.0,
+            max_distance: 12.0,
+            zoom_step: 0.5,
             pitch_min: -1.4,
             pitch_max: 1.4,
         }
@@ -42,32 +67,27 @@ pub struct Score {
 
 #[derive(Resource)]
 pub struct GameSettings {
-    /// Скорость ходьбы (м/с)
-    pub walk_speed: f32,
-    /// Скорость бега (м/с)
     pub run_speed: f32,
-    /// Скорость спринта (м/с)
     pub sprint_speed: f32,
-    /// Начальная скорость прыжка (м/с)
     pub jump_velocity: f32,
-    /// Гравитация (м/с²)
     pub gravity: f32,
-    /// Чувствительность мыши
     pub mouse_sensitivity: f32,
-    /// Скорость транспорта (м/с)
     pub vehicle_speed: f32,
+    pub turn_speed: f32,
+    pub camera_smoothing: f32,
 }
 
 impl Default for GameSettings {
     fn default() -> Self {
         Self {
-            walk_speed: 4.0,
             run_speed: 7.0,
             sprint_speed: 10.0,
             jump_velocity: 6.0,
             gravity: -20.0,
             mouse_sensitivity: 0.003,
             vehicle_speed: 25.0,
+            turn_speed: 12.0,
+            camera_smoothing: 25.0,
         }
     }
 }

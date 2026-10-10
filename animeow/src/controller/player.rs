@@ -2,7 +2,7 @@ use crate::actor::character::{Grounded, MovementStats};
 use crate::assets::GameAssets;
 use crate::core::input::InputState;
 use crate::states::{GameState, InGameState};
-use crate::types::{GameSettings, Player};
+use crate::types::{DesiredYaw, GameSettings, Player, PlayerModel};
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
@@ -13,7 +13,7 @@ impl Plugin for PlayerControllerPlugin {
         app.add_systems(OnEnter(GameState::InGame), spawn_player)
             .add_systems(
                 FixedUpdate,
-                character_movement
+                (character_movement, rotate_model_towards_movement)
                     .chain()
                     .run_if(in_state(InGameState::Playing)),
             )
@@ -30,6 +30,7 @@ fn spawn_player(mut commands: Commands, assets: Res<GameAssets>) {
             Player,
             Grounded(false),
             MovementStats::default(),
+            DesiredYaw::default(),
             RigidBody::Kinematic,
             CustomPositionIntegration,
             Collider::capsule(0.4, 1.0),
@@ -41,7 +42,9 @@ fn spawn_player(mut commands: Commands, assets: Res<GameAssets>) {
             // glTF-сцена садится в начало координат родителя.
             // y = -0.9 — если модель стоит «ногами в 0», а центр капсулы
             // должен быть в середине тела. Подгони под свою модель.
+            // rotation НЕ задаём — систему разворота довернёт за первый кадр.
             parent.spawn((
+                PlayerModel,
                 WorldAssetRoot(assets.player_scene.clone()),
                 Transform::from_xyz(0.0, -0.9, 0.0),
             ));
@@ -60,6 +63,7 @@ fn character_movement(
         &mut LinearVelocity,
         &Collider,
         &mut Grounded,
+        &mut DesiredYaw,
     ), With<Player>>,
 ) {
     let camera_transform = match camera_query.single() {
@@ -78,9 +82,17 @@ fn character_movement(
     let dt = time.delta();
     let dt_secs = dt.as_secs_f32();
 
-    for (entity, mut transform, mut velocity, collider, mut grounded) in &mut query {
+    for (entity, mut transform, mut velocity, collider, mut grounded, mut desired_yaw) in
+        &mut query
+    {
         let target_dir = (camera_forward * input.move_dir.y + camera_right * input.move_dir.x)
             .normalize_or_zero();
+
+        // Пишем целевой yaw только когда есть ввод.
+        // Стоим — сохраняем последний угол, модель не дёргается.
+        if target_dir != Vec3::ZERO {
+            desired_yaw.0 = target_dir.x.atan2(target_dir.z);
+        }
 
         let speed = if input.sprint {
             settings.sprint_speed
@@ -125,6 +137,31 @@ fn character_movement(
             &filter,
         );
         grounded.0 = hit.is_some();
+    }
+}
+
+/// Крутит узел с моделью (ребёнка капсулы) в сторону движения.
+/// Физику (родителя) не трогает — только визуал.
+fn rotate_model_towards_movement(
+    settings: Res<GameSettings>,
+    time: Res<Time>,
+    player_query: Query<&DesiredYaw, With<Player>>,
+    mut model_query: Query<&mut Transform, With<PlayerModel>>,
+) {
+    let Ok(desired) = player_query.single() else {
+        return;
+    };
+
+    let target_rotation =
+        Quat::from_rotation_y(desired.0);
+
+    let dt = time.delta_secs();
+    // Экспоненциальное сглаживание, независимое от FPS:
+    // alpha = 1 - exp(-k * dt). k = turn_speed.
+    let alpha = 1.0 - (-settings.turn_speed * dt).exp();
+
+    for mut transform in &mut model_query {
+        transform.rotation = transform.rotation.slerp(target_rotation, alpha);
     }
 }
 
