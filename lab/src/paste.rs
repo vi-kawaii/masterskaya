@@ -4,85 +4,114 @@ use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
-const PROMPT: &str = r##"Отвечай СТРОГО в таком формате, без пояснений вне блоков:
+/// Показывается пользователю. Без raw-строк, без вложенных маркеров,
+/// которые могли бы сломать парсер.
+fn prompt_text() -> String {
+    let mut s = String::new();
+    s.push_str("Отвечай СТРОГО в таком формате, без пояснений вне блоков:\n");
+    s.push('\n');
+    s.push_str("FILE путь/к/файлу\n");
+    s.push_str("====\n");
+    s.push_str("<полное содержимое файла>\n");
+    s.push_str("====\n");
+    s.push_str("EOF\n");
+    s.push('\n');
+    s.push_str("Правила:\n");
+    s.push_str("- Путь относительно корня проекта (например, src/main.rs).\n");
+    s.push_str("- Содержимое полное, без сокращений и без \"...\".\n");
+    s.push_str("- Без markdown-обёрток вокруг блоков.\n");
+    s.push_str("- Если файл не менялся — не включай его.\n");
+    s.push_str("- Если файл нужно удалить: DELETE путь/к/файлу\n");
+    s
+}
 
-FILE путь/к/файлу
-====
-<полное содержимое файла>
-====
-END FILE
+pub fn run(cwd: &Path, restart_after: bool) -> Result<(), String> {
+    let prompt = prompt_text();
 
-Правила:
-- Путь указывай относительно корня проекта (например, src/main.rs).
-- Содержимое — полное, без сокращений и без "...".
-- Никаких markdown-обёрток вокруг блоков.
-- Если файл не менялся — не включай его.
-- Если файл нужно удалить — напиши: DELETE путь/к/файлу
-"##;
-
-pub fn run(cwd: &Path) -> Result<(), String> {
     println!("──────────────────────────────────────────────");
     println!("ПРОМПТ (скопируй и вставь в DeepSeek):");
     println!("──────────────────────────────────────────────");
-    println!("{PROMPT}");
+    println!("{prompt}");
     println!("──────────────────────────────────────────────");
     println!();
+    if restart_after {
+        println!("🔄 Режим --restart: после применения файлов проект перезапустится.");
+        println!();
+    }
 
     let mut clipboard = Clipboard::new().map_err(|e| format!("нет доступа к буферу: {e}"))?;
 
-    if clipboard.set_text(PROMPT.to_string()).is_ok() {
-        println!("✅ Промпт уже в буфере обмена — просто вставь в чат.");
-    }
-
     println!();
     println!("Слушаю буфер обмена... Нажмите Ctrl+C для выхода.");
-    println!("Скопируй ответ DeepSeek с блоками FILE ... END FILE");
+    println!("Скопируй ответ DeepSeek с блоками FILE ... EOF");
     println!();
 
-    let mut last_text = PROMPT.to_string();
+    // Текущее содержимое буфера считаем «уже виденным».
+    let mut last_text = clipboard.get_text().unwrap_or_default();
 
     loop {
         if let Ok(text) = clipboard.get_text() {
-            if text != last_text
-                && (text.contains("FILE ") || text.contains("DELETE "))
-                && text.contains("END FILE")
-            {
+            if text != last_text {
                 last_text = text.clone();
-                match unpack_files(&text, cwd) {
-                    Ok((w, d, s)) => {
-                        println!();
-                        println!("══════════════ РЕЗУЛЬТАТ ══════════════");
-                        if !w.is_empty() {
-                            println!("✅ Записано ({}):", w.len());
-                            for f in &w {
-                                println!("   • {f}");
+
+                let has_file_block = text.contains("FILE ") || text.contains("DELETE ");
+                let has_end_marker = text
+                    .lines()
+                    .any(|l| l.trim() == "EOF" || l.trim() == "END FILE");
+
+                if has_file_block && has_end_marker {
+                    match unpack_files(&text, cwd) {
+                        Ok((w, d, s)) => {
+                            println!();
+                            println!("══════════════ РЕЗУЛЬТАТ ══════════════");
+                            if !w.is_empty() {
+                                println!("✅ Записано ({}):", w.len());
+                                for f in &w {
+                                    println!("   • {f}");
+                                }
+                            }
+                            if !d.is_empty() {
+                                println!("🗑 Удалено ({}):", d.len());
+                                for f in &d {
+                                    println!("   • {f}");
+                                }
+                            }
+                            if !s.is_empty() {
+                                println!("⚠️ Пропущено ({}):", s.len());
+                                for f in &s {
+                                    println!("   • {f}");
+                                }
+                            }
+                            println!("═══════════════════════════════════════");
+                            println!();
+
+                            if restart_after && (!w.is_empty() || !d.is_empty()) {
+                                println!("🔄 Перезапуск проекта...");
+                                println!();
+                                if let Err(e) = crate::run::run(cwd, None) {
+                                    eprintln!("❌ Ошибка перезапуска: {e}");
+                                }
+                                println!();
+                                println!("👀 Слушаю буфер обмена дальше...");
+                                println!();
                             }
                         }
-                        if !d.is_empty() {
-                            println!("🗑 Удалено ({}):", d.len());
-                            for f in &d {
-                                println!("   • {f}");
-                            }
+                        Err(e) => {
+                            println!();
+                            println!("❌ Ошибка распаковки: {e}");
+                            println!();
                         }
-                        if !s.is_empty() {
-                            println!("⚠️ Пропущено ({}):", s.len());
-                            for f in &s {
-                                println!("   • {f}");
-                            }
-                        }
-                        println!("═══════════════════════════════════════");
-                        println!();
-                    }
-                    Err(e) => {
-                        println!();
-                        println!("❌ Ошибка распаковки: {e}");
-                        println!();
                     }
                 }
             }
         }
         thread::sleep(Duration::from_millis(300));
     }
+}
+
+fn is_end_marker(line: &str) -> bool {
+    let t = line.trim();
+    t == "EOF" || t == "END FILE"
 }
 
 fn unpack_files(
@@ -124,6 +153,9 @@ fn unpack_files(
 
             let mut content = String::new();
             while i < lines.len() && lines[i].trim() != "====" {
+                if is_end_marker(lines[i]) {
+                    break;
+                }
                 content.push_str(lines[i]);
                 content.push('\n');
                 i += 1;
@@ -131,7 +163,7 @@ fn unpack_files(
             if i < lines.len() && lines[i].trim() == "====" {
                 i += 1;
             }
-            if i < lines.len() && lines[i].trim() == "END FILE" {
+            if i < lines.len() && is_end_marker(lines[i]) {
                 i += 1;
             }
 

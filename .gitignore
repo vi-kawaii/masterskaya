@@ -1,28 +1,5 @@
 # Rust
-/target/
-**/target/
-**/*.rs.bk
+target/
 
-# Cargo.lock НЕ игнорируем — он должен быть в репо (бинарные крейты)
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*.iml
-
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Логи
-*.log
-
-# Временные файлы
-*.tmp
-*.bak
-
-# OBS (тяжёлые бинарники, не коммитим)
-tv/obs-build/
+# lab
+.lab_run_cache

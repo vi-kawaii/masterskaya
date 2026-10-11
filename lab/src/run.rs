@@ -2,12 +2,17 @@
 //!
 //! Обходит дерево от cwd, ищет все Cargo.toml с признаками запускаемого
 //! проекта (src/main.rs или [[bin]]). Показывает меню через dialoguer.
+//!
+//! Помнит последний запущенный пакет в `.lab_run_cache` и предлагает его
+//! первым при следующем запуске.
 
 use dialoguer::{theme::ColorfulTheme, Select};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use walkdir::WalkDir;
+
+const RUN_CACHE_PATH: &str = ".lab_run_cache";
 
 /// Найденный запускаемый проект.
 struct RunnableProject {
@@ -44,17 +49,19 @@ pub fn run(cwd: &Path, arg: Option<&str>) -> Result<(), String> {
                         .join(", ")
                 )
             })?;
-        return cargo_run(p);
+        return cargo_run(p, cwd);
     }
 
     // Один проект — без вопроса.
     if projects.len() == 1 {
-        return cargo_run(&projects[0]);
+        return cargo_run(&projects[0], cwd);
     }
 
-    // Несколько — спросить.
-    let choice = pick(&projects)?;
-    cargo_run(&projects[choice])
+    // Несколько — читаем кэш и предлагаем его первым.
+    let last_run_package = read_run_cache(cwd);
+
+    let choice = pick(&projects, last_run_package.as_deref())?;
+    cargo_run(&projects[choice], cwd)
 }
 
 /// Обходит дерево от cwd, находит все папки с Cargo.toml.
@@ -86,10 +93,6 @@ fn scan_runnable(cwd: &Path) -> Vec<RunnableProject> {
             if let Some(p) = project_at(dir) {
                 out.push(p);
             }
-            // Не заходим внутрь проекта: walkdir сам обойдёт подпапки,
-            // но мы хотим остановиться. WalkDir::filter_entry не даёт
-            // «остановиться» на конкретной папке, поэтому используем
-            // отдельный приём — см. ниже.
         }
     }
 
@@ -140,25 +143,68 @@ fn extract_package_name(toml: &str) -> Option<String> {
     None
 }
 
+/// Читает имя последнего запущенного пакета из кэша.
+fn read_run_cache(cwd: &Path) -> Option<String> {
+    let cache_path = cwd.join(RUN_CACHE_PATH);
+    fs::read_to_string(cache_path)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Пишет имя запущенного пакета в кэш.
+fn write_run_cache(cwd: &Path, package: &str) -> Result<(), String> {
+    let cache_path = cwd.join(RUN_CACHE_PATH);
+    fs::write(cache_path, package).map_err(|e| format!("не могу записать кэш запуска: {e}"))
+}
+
 /// Интерактивный выбор через dialoguer.
-fn pick(projects: &[RunnableProject]) -> Result<usize, String> {
-    let items: Vec<String> = projects
+/// Если есть `last_run` и он найден среди проектов — он идёт первым в списке
+/// и выбран по умолчанию.
+fn pick(projects: &[RunnableProject], last_run: Option<&str>) -> Result<usize, String> {
+    // Индекс «последнего запущенного» в исходном массиве.
+    let last_run_original_index = last_run
+        .and_then(|last| projects.iter().position(|p| p.package == last));
+
+    // Порядок отображения: last_run первым (если есть), остальные — в исходном порядке.
+    let mut order: Vec<usize> = (0..projects.len()).collect();
+    if let Some(idx) = last_run_original_index {
+        order.retain(|&i| i != idx);
+        order.insert(0, idx);
+    }
+
+    let items: Vec<String> = order
         .iter()
-        .map(|p| format!("{}  ({})", p.display, p.package))
+        .map(|&i| {
+            let p = &projects[i];
+            format!("{}  ({})", p.display, p.package)
+        })
         .collect();
 
-    Select::with_theme(&ColorfulTheme::default())
+    let default_pos = if last_run_original_index.is_some() { 0 } else { 0 };
+
+    let chosen_pos = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Что запустить?")
         .items(&items)
-        .default(0)
+        .default(default_pos)
         .interact()
-        .map_err(|e| format!("не удалось получить выбор: {e}"))
+        .map_err(|e| format!("не удалось получить выбор: {e}"))?;
+
+    // Переводим позицию в отображаемом списке в индекс в исходном массиве.
+    Ok(order[chosen_pos])
 }
 
 /// Запускает `cargo run -p <package>` в папке проекта.
-fn cargo_run(p: &RunnableProject) -> Result<(), String> {
+/// Перед запуском пишет package в кэш.
+fn cargo_run(p: &RunnableProject, workspace_root: &Path) -> Result<(), String> {
     println!("▶ cargo run -p {}", p.package);
     println!("  (cwd: {})", p.dir.display());
+
+    // Записываем в кэш до запуска, чтобы при следующем вызове
+    // этот проект шёл первым.
+    if let Err(e) = write_run_cache(workspace_root, &p.package) {
+        eprintln!("⚠️  Не удалось сохранить кэш запуска: {e}");
+    }
 
     let status = Command::new("cargo")
         .arg("run")

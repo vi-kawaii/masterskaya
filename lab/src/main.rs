@@ -18,6 +18,7 @@ fn main() -> ExitCode {
         Some(c) => c,
         None => {
             eprintln!("usage: lab <dump|paste|commit|run>");
+            eprintln!("  paste [-r|--restart]   — применить файлы и (опц.) перезапустить проект");
             return ExitCode::FAILURE;
         }
     };
@@ -26,7 +27,10 @@ fn main() -> ExitCode {
 
     let result = match cmd.as_str() {
         "dump" => dump::run(&cwd),
-        "paste" => paste::run(&cwd),
+        "paste" => {
+            let restart = matches!(arg.as_deref(), Some("-r") | Some("--restart"));
+            paste::run(&cwd, restart)
+        }
         "commit" => commit::run(&cwd),
         "run" => run::run(&cwd, arg.as_deref()),
         other => {
