@@ -1,5 +1,4 @@
-use crate::actor::character::{Grounded, MovementStats};
-use crate::assets::GameAssets;
+use crate::actor::character::Grounded;
 use crate::core::input::InputState;
 use crate::states::{GameState, InGameState};
 use crate::types::{DesiredYaw, GameSettings, Player, PlayerModel};
@@ -10,8 +9,9 @@ pub struct PlayerControllerPlugin;
 
 impl Plugin for PlayerControllerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::InGame), spawn_player)
-            .add_systems(
+        // Игрок спавнится не здесь, а в modes/game/mod.rs по событию
+        // ColliderConstructorHierarchyReady. Здесь только системы движения.
+        app.add_systems(
                 FixedUpdate,
                 (character_movement, rotate_model_towards_movement)
                     .chain()
@@ -20,35 +20,6 @@ impl Plugin for PlayerControllerPlugin {
             .add_systems(Update, flatten_materials.run_if(in_state(InGameState::Playing)))
             .add_systems(OnExit(GameState::InGame), cleanup_player);
     }
-}
-
-/// Спавним «невидимую капсулу» — родителя с физикой,
-/// и вешаем на неё glTF-сцену как визуал.
-fn spawn_player(mut commands: Commands, assets: Res<GameAssets>) {
-    commands
-        .spawn((
-            Player,
-            Grounded(false),
-            MovementStats::default(),
-            DesiredYaw::default(),
-            RigidBody::Kinematic,
-            CustomPositionIntegration,
-            Collider::capsule(0.4, 1.0),
-            Transform::from_xyz(0.0, 2.0, 0.0),
-            LinearVelocity::default(),
-            Visibility::default(),
-        ))
-        .with_children(|parent| {
-            // glTF-сцена садится в начало координат родителя.
-            // y = -0.9 — если модель стоит «ногами в 0», а центр капсулы
-            // должен быть в середине тела. Подгони под свою модель.
-            // rotation НЕ задаём — систему разворота довернёт за первый кадр.
-            parent.spawn((
-                PlayerModel,
-                WorldAssetRoot(assets.player_scene.clone()),
-                Transform::from_xyz(0.0, -0.9, 0.0),
-            ));
-        });
 }
 
 fn character_movement(
@@ -88,8 +59,6 @@ fn character_movement(
         let target_dir = (camera_forward * input.move_dir.y + camera_right * input.move_dir.x)
             .normalize_or_zero();
 
-        // Пишем целевой yaw только когда есть ввод.
-        // Стоим — сохраняем последний угол, модель не дёргается.
         if target_dir != Vec3::ZERO {
             desired_yaw.0 = target_dir.x.atan2(target_dir.z);
         }
@@ -140,8 +109,6 @@ fn character_movement(
     }
 }
 
-/// Крутит узел с моделью (ребёнка капсулы) в сторону движения.
-/// Физику (родителя) не трогает — только визуал.
 fn rotate_model_towards_movement(
     settings: Res<GameSettings>,
     time: Res<Time>,
@@ -152,12 +119,9 @@ fn rotate_model_towards_movement(
         return;
     };
 
-    let target_rotation =
-        Quat::from_rotation_y(desired.0);
+    let target_rotation = Quat::from_rotation_y(desired.0);
 
     let dt = time.delta_secs();
-    // Экспоненциальное сглаживание, независимое от FPS:
-    // alpha = 1 - exp(-k * dt). k = turn_speed.
     let alpha = 1.0 - (-settings.turn_speed * dt).exp();
 
     for mut transform in &mut model_query {
@@ -165,8 +129,6 @@ fn rotate_model_towards_movement(
     }
 }
 
-/// Устанавливает `unlit: true` для всех материалов модели игрока,
-/// чтобы она не реагировала на свет.
 fn flatten_materials(
     mut materials: ResMut<Assets<StandardMaterial>>,
     query: Query<&MeshMaterial3d<StandardMaterial>>,

@@ -28,6 +28,8 @@ fn main() {
                 .continue_to_state(GameState::InGame)
                 .load_collection::<assets::GameAssets>(),
         )
+        // Обсервер на событие готовности коллайдеров острова.
+        .add_observer(modes::game::on_island_ready)
         .add_plugins((
             core::CorePlugin,
             modes::ModesPlugin,

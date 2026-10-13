@@ -8,4 +8,9 @@ use bevy_asset_loader::prelude::*;
 pub struct GameAssets {
     #[asset(path = "models/anime-girl.glb#Scene0")]
     pub player_scene: Handle<WorldAsset>,
+
+    /// Остров — статическая геометрия мира.
+    /// `#Scene0` — первая сцена внутри `main.glb`.
+    #[asset(path = "models/main.glb#Scene0")]
+    pub island_scene: Handle<WorldAsset>,
 }
