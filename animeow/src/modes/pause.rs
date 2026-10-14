@@ -6,8 +6,14 @@ pub struct PausePlugin;
 impl Plugin for PausePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, toggle_pause.run_if(in_state(GameState::InGame)))
-            .add_systems(OnEnter(InGameState::Paused), setup_pause_ui)
-            .add_systems(OnExit(InGameState::Paused), cleanup_pause_ui);
+            .add_systems(
+                OnEnter(InGameState::Paused),
+                (setup_pause_ui, pause_time),
+            )
+            .add_systems(
+                OnExit(InGameState::Paused),
+                (cleanup_pause_ui, unpause_time),
+            );
     }
 }
 
@@ -25,6 +31,20 @@ fn toggle_pause(
             InGameState::Paused => next.set(InGameState::Playing),
         }
     }
+}
+
+/// Пауза физики, анимаций, cooldown-таймеров и всего, что зависит от Time.
+/// `Time<Virtual>` управляет и обычным `Time`, и `Time<Fixed>`.
+/// Когда виртуальное время на паузе, `FixedUpdate` получает delta = 0,
+/// и avian (вместе с Tnua) не двигает тела.
+fn pause_time(mut time: ResMut<Time<Virtual>>) {
+    println!("[pause] time paused");
+    time.pause();
+}
+
+fn unpause_time(mut time: ResMut<Time<Virtual>>) {
+    println!("[pause] time unpaused");
+    time.unpause();
 }
 
 fn setup_pause_ui(mut commands: Commands) {

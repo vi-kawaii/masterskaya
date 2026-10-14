@@ -31,7 +31,7 @@ NPC с AI, диалогами, квестами.
    Движок Bevy 0.19.1 Уже в проекте
    Физика avian3d 0.7 Кинематический персонаж + динамика + raycast-vehicle
    Контроллер персонажа bevy-tnua 0.32 + bevy-tnua-avian3d 0.12 Floating controller, устраняет ghost collisions
-   Загрузка ассетов bevy_asset_loader 0.27 Асинхронная подгрузка чанков и моделей
+   Загрузка ассетов своя (AssetServer + get_load_state) Полный контроль над прогрессом и переходом
    Анимации glTF (.glb) + AnimationPlayer Стандарт Bevy (единый пайплайн через Blender)
    Навигация своя (waypoint/сетка), позже navmesh Готовых под 0.19 нет
    UI bevy_ui Не плодить зависимости
@@ -59,6 +59,10 @@ Map
 QuestLog
 Dialog
 Cutscene
+
+Фактически реализовано:
+GameState: Loading → InGame. Остальные пока не используются.
+InGameState: Playing ⇄ Paused (по Esc).
 
 3.2. Модульная структура
 src/
@@ -104,8 +108,8 @@ inventory_ui.rs
 map.rs
 quest_log.rs
 modes/ # игровые режимы
-loading.rs
-pause.rs
+loading.rs # загрузка (ручной счёт, прогресс-бар)
+pause.rs # пауза (Time<Virtual>::pause)
 game/
 
 4. Ключевые подсистемы
@@ -122,7 +126,6 @@ LOD для дальних объектов.
 
 **Рельеф и ходьба по нему.**
 - Склоны: `TnuaBuiltinWalkConfig::max_slope_angle` (уточнить имя в 0.32).
-  Круче — персонаж скользит.
 - Ступеньки: автоподъём через raycast вперёд-вниз (Tnua сам умеет).
 - Спуск без отрыва: `cling_distance` в конфиге.
 - Рельеф: гибрид — крупные формы дизайнер лепит в Blender, детали
@@ -168,95 +171,83 @@ Tnua держит центр капсулы на высоте `float_height` н�
 
 **Поворот.** Tnua сам крутит тело через `desired_forward` в
 `TnuaBuiltinWalk`. Модель-ребёнок наследует rotation родителя.
-Направление движения берётся из ввода относительно камеры.
 
 **Разделение физики и визуала.** Капсула (`RigidBody::Dynamic`)
 несёт трансформ позиции и вращения. Модель — её ребёнок, имеет
-локальный offset по Y и локальный yaw-offset (см. ниже). Физика
-крутится Tnua, визуал просто следует за родителем.
+локальный offset по Y и локальный yaw-offset (см. ниже).
 
 **Спавн игрока — по событию готовности коллайдеров.**
 Игрок не спавнится в `OnEnter(InGame)` напрямую. Вместо этого:
-- `spawn_island` создаёт только свет и остров.
-- Обсервер `on_island_ready` ждёт `ColliderConstructorHierarchyReady`
-  и спавнит игрока в этот момент.
-- Это устраняет «гонку загрузки»: игрок появляется только тогда,
-  когда коллайдеры острова уже в мире, и не проваливается в пустоту.
-
-`ColliderConstructorHierarchyReady` срабатывает **даже если
-коллайдеры не создались**. Поэтому нужна проверка
-`player_exists.is_empty()`.
+- `spawn_island` вызывается из `check_loading` (Loading), когда
+  ассеты загружены.
+- `spawn_island` создаёт свет и остров с `WorldAssetRoot`.
+- Параллельно ждут два события: `WorldInstanceReady` (сцена
+  инстанцирована) и `ColliderConstructorHierarchyReady`
+  (коллайдеры построены).
+- Когда оба — `finish_loading` переключает `Loading → InGame`,
+  удаляет Loading UI и меняет ClearColor на мировой.
 
 **Схема управления: `CharacterControlScheme`.**
 Объявлена в `controller/scheme.rs`. Базис — `TnuaBuiltinWalk`,
 действие — `Jump(TnuaBuiltinJump)`. Макрос `#[derive(TnuaScheme)]`
-генерирует:
-- `CharacterControlSchemeConfig` — ассет конфига с полями
-  `basis: TnuaBuiltinWalkConfig` и `jump: TnuaBuiltinJumpConfig`.
-- Дискриминант и состояние действий.
+генерирует `CharacterControlSchemeConfig` — ассет конфига с полями
+`basis: TnuaBuiltinWalkConfig` и `jump: TnuaBuiltinJumpConfig`.
 
 Конфиг-хендл хранится в ресурсе `CharacterControlConfigHandle`
 и вешается на игрока через `TnuaConfig::<CharacterControlScheme>(handle)`.
 **Без конфига Tnua молча пропускает контроллер** — персонаж стоит,
-но не двигается. Это неочевидная ловушка.
+но не двигается.
 
 **Текущий конфиг (под капсулу 0.4×1.0):**
 - `basis.float_height = 0.80` — ниже полвысоты капсулы (0.9),
-  чтобы низ капсулы уходил в землю на ~0.1 и не было визуального
-  зазора (floating controller всегда держит центр, а не низ).
-- `basis.cling_distance = 0.05` — прилипание на спусках,
-  без «запаса» пружины, который давал паразитный подъём.
-- `basis.spring_strength = 100.0`, `spring_dampening = 1.0` —
-  умеренно жёсткая пружина.
-- `basis.speed = 6.0` — максимальная скорость в м/с.
+  чтобы низ капсулы уходил в землю на ~0.1 (floating controller
+  всегда держит центр, а не низ).
+- `basis.cling_distance = 0.05` — прилипание на спусках.
+- `basis.spring_strength = 100.0`, `spring_dampening = 1.0`.
+- `basis.speed = 6.0` — максимальная скорость, м/с.
 - `basis.acceleration = 1000.0`, `air_acceleration = 100.0` —
-  почти мгновенный старт/стоп, нет инерции.
-- `jump.height = 1.2`, `jump.takeoff_extra_gravity = 15.0` —
-  умеренный прыжок без «телепорта».
+  почти мгновенный старт/стоп.
+- `jump.height = 1.2`, `jump.takeoff_extra_gravity = 15.0`.
 
 **Сенсор:** `TnuaAvian3dSensorShape(Collider::sphere(0.1))`.
-Маленькая сфера даёт точное «прощупывание» земли. Раньше пробовали
-капсулу радиуса 0.4 — сенсор «видел» землю раньше низа капсулы
-и держал персонажа выше.
+Маленькая сфера даёт точное «прощупывание» земли.
 
 **Смещение модели внутри капсулы.** Модель — ребёнок капсулы,
 локальный `Transform::from_xyz(0.0, -0.92, 0.0).with_rotation(yaw)`.
-Y подбирается эмпирически, шаг 0.01–0.02, чтобы ноги визуально
-стояли на земле. Правило: утопает → Y ближе к `-0.88`; парит →
-Y ближе к `-0.95`.
+Y подбирается эмпирически, шаг 0.01–0.02. Правило: утопает → Y
+ближе к `-0.88`; парит → Y ближе к `-0.95`.
 
 **Yaw-компенсация модели.** `MODEL_YAW_OFFSET = PI` в
 `spawn_player_entity`. Модель `anime-girl.glb` экспортирована
-с forward в **-Z**, а Tnua использует **+Z**. Это временная
-компенсация: при следующем импорте модели привести forward к +Z
-в Blender (нос/лицо смотрят в **-Y** в Blender = +Z в Bevy) и
-убрать константу. См. правило в §4.2 «Модель — самодостаточная».
+с forward в **-Z**, а Tnua использует **+Z**. Временный костыль:
+при следующем импорте модели привести forward к +Z в Blender
+(нос/лицо смотрят в **-Y** в Blender = +Z в Bevy) и убрать
+константу.
+
+**Правила приведения модели (Blender → Bevy):**
+- Metric, Meters, Scale 1.0.
+- Высота 1.8 м по Z (под капсулу `Collider::capsule(0.4, 1.0)`).
+- Origin между ступней, по центру X/Y.
+- Forward в **-Y** в Blender = **+Z** в Bevy.
+- Rotation/scale/location применены (`Ctrl+A → All Transforms`).
+- Empty между арматурой и мешами убраны, трансформы схлопнуты.
 
 **Ввод (InputState).** Абстракция ввода из `core/input.rs`:
-`move_dir: Vec2` (локальные оси: x — вправо, y — вперёд),
-`sprint: bool`, `jump_pressed: bool`. Заполняется в `Update`,
-читается в `FixedUpdate` из `tnua_movement`.
-
-**Порядок систем.** `tnua_movement` в `FixedUpdate` (Tnua и физика
-в том же расписании). `flatten_materials` в `Update` (визуал).
-`cleanup_player` на `OnExit(GameState::InGame)`.
+`move_dir: Vec2`, `sprint: bool`, `jump_pressed: bool`.
+Заполняется в `Update`, читается в `FixedUpdate` из `tnua_movement`.
 
 4.3. Камера
 CameraRig (родитель) + Camera3d (ребёнок).
 
 Yaw/pitch от мыши, зум колесом, коллизия через raycast.
 
-Сглаживание позиции и поворота.
-
-Режимы: TPS-свободный, TPS-прицеливание, FPS-прицеливание.
-
 **Сглаживание — только ввод, не слежение.**
-- Риг жёстко привязан к игроку + `EYE_HEIGHT`. Без `lerp` по позиции —
-  иначе укачивает.
-- Мышь двигает *целевые* yaw/pitch (`target_yaw`, `target_pitch`),
-  система `orbit_camera` плавно ведёт текущие значения к целям через
-  `alpha = 1 - exp(-k·dt)`. Зум — так же через `target_distance`.
-- Ощущение: «мышь тянет камеру с лёгкой инерцией», как в Genshin.
+- Риг жёстко привязан к игроку + `EYE_HEIGHT`.
+- Мышь двигает `target_yaw`/`target_pitch`, система `orbit_camera`
+  плавно ведёт текущие значения к целям через
+  `alpha = 1 - exp(-k·dt)`.
+- Зум — через `target_distance`.
+- `camera_smoothing = 25.0` (1/с).
 
 4.4. Бой
 Гибрид: огнестрел (hitscan + снаряды) + ближний бой + скиллы.
@@ -315,8 +306,58 @@ HUD: HP, стамина, патроны, миникарта, компас, кв�
 
 **Отладочный визуал.** `PhysicsDebugPlugin` из avian3d рисует
 коллайдеры линиями. Включён всегда — на ранних этапах важнее
-видеть коллизии, чем экономить FPS. Для релиза обернуть в
-`#[cfg(debug_assertions)]` или фиче-флаг.
+видеть коллизии. Для релиза обернуть в `#[cfg(debug_assertions)]`.
+
+**Известный визуальный артефакт — промежуток между Loading UI
+и появлением моделей.** `WorldInstanceReady` и
+`ColliderConstructorHierarchyReady` срабатывают раньше, чем меши
+и материалы доходят до GPU. Визуально: Loading UI исчезает, на
+секунду виден пустой ClearColor, потом появляются модели.
+Причина — асинхронная подготовка `RenderAssetUsages::RENDER_WORLD`
+в Bevy. Оставлено как есть до отдельной итерации полировки.
+
+4.11. Загрузка
+**Ручной счёт через AssetServer.** `bevy_asset_loader` и
+`iyes_progress` **не используются** — их API в 0.27/0.17
+несовместим с Bevy 0.19 без правок. Вместо них — своя система.
+
+**Как работает:**
+- `LoadingPlugin` на `OnEnter(Loading)` спавнит UI и стартует
+  загрузку через `asset_server.load("models/...")`.
+- Хендлы складываются в ресурс `LoadingHandles` (Vec + счётчик).
+- `check_loading` в `Update` (только в Loading) проверяет
+  `asset_server.get_load_state(handle)` для каждого хендла.
+- Прогресс = `done / total`.
+- Когда все загружены и прошло `min_display` (0.5 с) —
+  вызывается `spawn_island`.
+- Дальше ждём `IslandReady` (сцена + коллайдеры).
+- `finish_loading` переключает `Loading → InGame`, удаляет
+  Loading UI/камеру, меняет `ClearColor` с чёрного на мировой.
+
+**Camera2d для Loading.** В animeow нет камеры до `InGame`,
+поэтому Loading UI не рендерится. Добавлен `LoadingCamera`
+(Camera2d) на `Startup`, удаляется в `finish_loading`.
+
+**Цвета фона.** `ClearColor` глобальный, не per-camera.
+- Старт и Loading: `Color::BLACK` (из `main.rs`).
+- InGame: `Color::srgb(0.05, 0.05, 0.1)` (устанавливается в
+  `finish_loading`).
+
+Граница между Loading и InGame видна по смене фона.
+
+4.12. Пауза
+Esc в `InGameState::Playing` → `InGameState::Paused`. Esc обратно.
+
+**Пауза времени.** `Time<Virtual>::pause()` на входе,
+`Time<Virtual>::unpause()` на выходе. Это останавливает **всё**,
+что зависит от `Time`: физику avian, Tnua, анимации, cooldown-таймеры.
+
+`Time<Virtual>` управляет и `Time`, и `Time<Fixed>`. Когда
+виртуальное время на паузе, `FixedUpdate` получает delta = 0,
+и avian не двигает тела.
+
+**Что это даёт:** прыжок в воздухе → Esc → персонаж замирает
+в воздухе. Esc → падение продолжается с той же точки.
 
 5. Что явно НЕ делаем на старте
    ❌ Мультиплеер.
@@ -343,6 +384,8 @@ HUD: HP, стамина, патроны, миникарта, компас, кв�
    Ghost collisions на trimesh Решено переходом на Tnua (§4.1)
    Floating controller даёт визуальный зазор Настроен float_height
    ниже полвысоты капсулы + offset модели (§4.2)
+   Промежуток Loading → модели на экране Отложено, требует
+   проверки готовности RenderAssetUsages (§4.10)
 
 7. План работ
    Каждый этап заканчивается играбельным билдом.
@@ -354,35 +397,41 @@ HUD: HP, стамина, патроны, миникарта, компас, кв�
 Этап 1. 3D-фундамент
 Цель: пол, свет, камера, управляемый куб.
 
-☑ Cargo.toml: добавить avian3d, bevy_asset_loader
+☑ Cargo.toml: добавить avian3d
 ☑ main.rs: Camera3d + DirectionalLight
-☑ types.rs: расширить Player, GameSettings (move_speed, jump, sensitivity)
-☑ controller/player.rs: переписать под 3D (спавн Cuboid, движение XZ)
+☑ types.rs: расширить Player, GameSettings
+☑ controller/player.rs: переписать под 3D
 ☑ modes/game/mod.rs: убрать/переделать Triangle под 3D
-☑ modes/vehicle.rs: временно отключить (вернём на Этапе 5)
+☑ modes/vehicle.rs: временно отключить
 
 Этап 2. TPS-камера + персонаж
 Цель: ходить/бегать/прыгать, камера не застревает.
 
-☑ core/camera.rs: CameraRig, орбита, pitch clamp, захват курсора,
-  слежение за игроком
-☑ core/camera.rs: зум колесом с clamp (min/max distance)
-☑ core/camera.rs: плавность ввода — yaw/pitch/зум через
-  `target_*` + экспоненциальное сглаживание
-☑ core/input.rs: абстракция ввода (WASD, спринт, прыжок)
-☑ actor/character.rs: общие компоненты (Health, MovementStats)
+☑ core/camera.rs: CameraRig, орбита, pitch clamp, захват курсора
+☑ core/camera.rs: зум колесом с clamp
+☑ core/camera.rs: плавность ввода — через `target_*` + сглаживание
+☑ core/input.rs: абстракция ввода
+☑ actor/character.rs: общие компоненты
 ☑ core/physics.rs: PhysicsPlugins + Gravity + PhysicsDebugPlugin
-☑ modes/loading.rs: реальная загрузка через bevy_asset_loader
-☑ assets.rs: GameAssets (модель персонажа anime-girl.glb)
-☑ controller/scheme.rs: CharacterControlScheme + CharacterControlSchemeConfig
+☑ controller/scheme.rs: CharacterControlScheme + Config
 ☑ controller/player.rs: tnua_movement — заполняет TnuaController
-   (basis: TnuaBuiltinWalk, action: Jump)
 ☑ core/physics.rs: TnuaControllerPlugin + TnuaAvian3dPlugin
 ☑ core/physics.rs: конфиг схемы как ассет + handle в ресурсе
 ☑ modes/game/mod.rs: spawn_player_entity с TnuaController,
   TnuaConfig, TnuaAvian3dSensorShape, LockedAxes
-☑ modes/game/mod.rs: on_island_ready ждёт ColliderConstructorHierarchyReady
+☑ modes/game/mod.rs: IslandReady (scene + colliders) → finish_loading
 ☑ core/debug.rs: отладочный текст с координатами
+
+☑ Этап 2.5. Загрузка и пауза
+☑ modes/loading.rs: ручной счёт через AssetServer
+☑ modes/loading.rs: прогресс-бар с процентами
+☑ modes/loading.rs: Camera2d для рендера UI
+☑ main.rs: start_loading → check_loading → spawn_island
+☑ modes/game/mod.rs: on_scene_ready + on_island_ready → IslandReady
+☑ modes/game/mod.rs: finish_loading — переход в InGame
+☑ main.rs: ClearColor чёрный на старте
+☑ modes/game/mod.rs: ClearColor мировой в finish_loading
+☑ modes/pause.rs: Time<Virtual>::pause на Esc
 
 [ ] states.rs: locomotion-стейты (idle/run/jump/fall)
 [ ] Анимации персонажа (AnimationPlayer + выбор клипа по состоянию)
@@ -390,12 +439,9 @@ HUD: HP, стамина, патроны, миникарта, компас, кв�
 Этап 3. Мир и стриминг
 Цель: уровень, текстуры, тени, чанки.
 
-□ Debug-полигон: холм, стенка, ступеньки, наклон — всё
-  статическое, с коллайдерами. Цель — увидеть, где Tnua
-  ломается на рельефе.
-□ Ходьба по склонам: настройка TnuaBuiltinWalkConfig под геймплей
+□ Debug-полигон: холм, стенка, ступеньки, наклон
+□ Ходьба по склонам: настройка TnuaBuiltinWalkConfig
 □ Snap to ground на спуске (cling_distance)
-□ Автоподъём на ступеньки (Tnua сам умеет)
 □ world/chunk.rs: структура чанка
 □ world/streaming.rs: подгрузка/выгрузка по радиусу
 □ world/level.rs: сборка уровня
@@ -443,205 +489,111 @@ HUD: HP, стамина, патроны, миникарта, компас, кв�
 □ слоты сохранений
 
 Этап 9. Полировка (постоянно)
-□ Анимации персонажей и NPC (экспорт моделей в .glb через Blender)
+□ Анимации персонажей и NPC
 □ Звук, музыка
 □ Эффекты, частицы
 □ LOD, оптимизация
 □ Баланс, контент
+□ Промежуток Loading → модели (§4.10)
 
 8. Порядок изменений в существующем коде
    states.rs — оставить, расширить подстейтами по §3.1.
    types.rs — расширить.
-   controller/player.rs — построен вокруг TnuaController.
+   controller/player.rs — вокруг TnuaController.
    controller/scheme.rs — CharacterControlScheme + конфиг.
    core/physics.rs — PhysicsPlugins + Tnua + ассет конфига.
-   modes/vehicle.rs, modes/game/mod.rs — переписать под 3D-меши.
-   modes/loading.rs — заменить таймер на реальную загрузку.
+   modes/loading.rs — ручной счёт через AssetServer + UI.
+   modes/pause.rs — Time<Virtual>::pause.
+   modes/game/mod.rs — IslandReady, finish_loading.
    actor/*, controller/bot.rs, modes/game/{dialog,fight,hud,move_}.rs — пустые, наполнять по этапам.
 
 9. Журнал решений
    Короткие записи, почему сделано именно так. Не удалять — контекст.
 
-Loading через bevy_asset_loader. Таймер убран. LoadingState сам
-переключает GameState, когда ассеты загружены. Это соответствует
-ARCHITECTURE.md §«Loading — это стейт, а не таймер».
-
 **Переход с MoveAndSlide на bevy-tnua.** Изначально контроллер
 был на `RigidBody::Kinematic + CustomPositionIntegration +
-MoveAndSlide`. Это давало полный контроль над движением, но
-упиралось в ghost collisions на тримешах: персонаж «парил» над
-ровными участками. `FIX_INTERNAL_EDGES` помогал не полностью.
-Решение — перейти на floating controller bevy-tnua. Это смена
-парадигмы: Tnua держит **центр** капсулы на высоте над землёй,
-а не двигает тело «до контакта». Ghost collisions исчезают
-архитектурно. Минус — появляется визуальный зазор, но он
-устраняется понижением `float_height` и подгонкой offset модели.
+MoveAndSlide`. Это давало ghost collisions на тримешах. Решение —
+floating controller bevy-tnua. Tnua держит центр капсулы на высоте
+над землёй, а не двигает тело «до контакта». Ghost collisions
+исчезают архитектурно. Минус — визуальный зазор, устраняется
+понижением `float_height` и подгонкой offset модели.
 
 **Версия Tnua — 0.32 (для Bevy 0.19).** Версии 0.24 и раньше
-собраны под Bevy 0.16, их нельзя использовать. Первые попытки
-подключить 0.24 привели к конфликту двух версий Bevy в графе
-зависимостей (bevy 0.19 + bevy 0.16 транзитивно) и к ошибкам
-типа «`TnuaController` is not a `Component`». Правильные версии:
+собраны под Bevy 0.16, их нельзя использовать — конфликт двух
+версий Bevy в графе зависимостей. Правильные версии:
 `bevy-tnua = "0.32"`, `bevy-tnua-avian3d = "0.12"`.
 
-**Схема управления обязательна.** В Tnua 0.32 `TnuaController`
-параметризован схемой (`TnuaScheme`). Схема — enum с вариантами
-действий; базис задаётся в атрибуте `#[scheme(basis = ...)]`.
-Макрос `#[derive(TnuaScheme)]` генерирует:
-- `CharacterControlSchemeConfig` — ассет конфига, поля `basis`
-  и `<действие>` (по имени варианта).
-- Дискриминант действий и состояние.
-
-`CharacterControlSchemeConfig` **не имеет `Default`** — его надо
-создавать вручную, задавая поля.
+**Схема управления обязательна.** `TnuaController` параметризован
+схемой (`TnuaScheme`). Макрос `#[derive(TnuaScheme)]` генерирует
+`CharacterControlSchemeConfig` — ассет конфига. Он **не имеет
+`Default`** — надо создавать вручную.
 
 **`TnuaConfig<S>(handle)` обязателен.** Без него
-`apply_controller_system` делает `let Some(config) = ... else
-{ continue; }` и молча пропускает контроллер. Симптом:
-персонаж стоит и не двигается, ошибок в консоли нет. Отладка —
-проверить наличие `TnuaConfig` на игроке и ассет в
-`Assets<CharacterControlSchemeConfig>`.
+`apply_controller_system` делает `else { continue; }` и молча
+пропускает контроллер. Симптом: персонаж стоит, ошибок нет.
 
-**`controller.basis` — поле, не метод.** В 0.32 `basis` — это
-поле типа `S::Basis` (не `Option`, не метод). Присваивается
+**`controller.basis` — поле, не метод.** В 0.32 присваивается
 напрямую: `controller.basis = TnuaBuiltinWalk { ... };`.
 
 **`controller.action(...)` требует `initiate_action_feeding()`.**
-Паника «Feeding action without invoking
-`initiate_action_feeding()`» — прямой признак того, что
-`action(...)` вызван без предварительного
-`controller.initiate_action_feeding()`. Парного «end» метода нет:
-флаг сбрасывается внутри `apply_controller_system` в конце кадра.
-Вызывать `initiate_action_feeding()` нужно **каждый кадр**, когда
-планируем вызвать `action(...)`.
+Иначе паника. Парного «end» нет: флаг сбрасывается внутри
+`apply_controller_system` в конце кадра.
 
-**`action(...)` принимает вариант схемы.** Не «сырое» действие
-(`TnuaBuiltinJump`), а вариант `CharacterControlScheme::Jump(...)`.
-Аналогично `action_start`, `action_trigger`, `action_interrupt`,
-`action_end` принимают соответствующие типы (действие или
-дискриминант).
+**`action(...)` принимает вариант схемы.** Не `TnuaBuiltinJump`,
+а `CharacterControlScheme::Jump(TnuaBuiltinJump::default())`.
 
-**Три-компонента для сенсора.** Tnua сама создаёт сенсоры
-(через `TnuaSensorsEntities<S>`), но **форма** сенсора задаётся
-пользователем через `TnuaAvian3dSensorShape`. Без этого
-компонента Tnua использует ray cast от центра капсулы — это
-работает, но грубее. Маленькая сфера (`Collider::sphere(0.1)`)
-даёт более точное «прощупывание» земли, чем капсула радиуса 0.4:
-последняя «видит» землю раньше низа капсулы и поднимает персонажа.
+**Три компонента для сенсора.** Tnua создаёт сенсоры сама, но
+форму задаёт `TnuaAvian3dSensorShape`. Маленькая сфера
+(`Collider::sphere(0.1)`) даёт точное «прощупывание» земли.
+Капсула радиуса 0.4 «видит» землю раньше низа капсулы.
 
-**Floating controller всегда держит центр, а не низ.** Это
-архитектурная особенность, не баг. Нет способа заставить Tnua
-«касаться земли низом капсулы». Приходится идти на компромисс:
-- `float_height` ниже полвысоты капсулы (0.80 против 0.90) —
-  низ уходит в землю, зазор исчезает.
-- `cling_distance` уменьшен (0.05) — убирает паразитный подъём
-  пружины.
-- Модель внутри капсулы смещена по Y эмпирически
-  (`-0.92` под капсулу 0.4×1.0 и `float_height = 0.80`).
+**Floating controller всегда держит центр, а не низ.** Архитектура.
+Компромисс: `float_height` ниже полвысоты капсулы (0.80 против
+0.90), `cling_distance` = 0.05, offset модели = `-0.92`.
 
-Правило подбора: утопает → Y ближе к `-0.88`; парит → Y ближе
-к `-0.95`. Шаг 0.01–0.02.
-
-**`LockedAxes` через билдер в avian3d 0.7.** Константы
-`ROTATION_LOCKED_X`, `ROTATION_LOCKED_Z` удалены. Использовать
+**`LockedAxes` через билдер в avian3d 0.7.**
 `LockedAxes::new().lock_rotation_x().lock_rotation_z()`.
 
-**`Grounded` удалён.** Tnua сам отслеживает состояние
-«на земле / в воздухе» через `TnuaController::is_airborne()`.
-Отдельный компонент не нужен. Для геймплея — читать из Tnua.
+**`Grounded` удалён.** Tnua сам отслеживает состояние через
+`TnuaController::is_airborne()`.
 
-**Разворот модели — через Tnua `desired_forward`.** Не через
-`rotate_model_towards_movement` (система удалена). Tnua крутит
-тело, модель-ребёнок наследует rotation. `desired_forward:
-Dir3::new(move_dir).ok()` — `None`, когда ввода нет (персонаж
-не крутится).
+**Разворот модели — через Tnua `desired_forward`.**
+`Dir3::new(move_dir).ok()` — `None`, когда ввода нет.
 
 **Yaw-компенсация модели — временный костыль.**
-`MODEL_YAW_OFFSET = PI` в `spawn_player_entity`. Модель
-`anime-girl.glb` экспортирована с forward в **-Z**, а Tnua
-использует **+Z**. Модель крутится «наоборот». Правильное решение —
-пересобрать модель в Blender с forward в +Z. Сейчас — компенсация
-в коде, с явным именем константы и комментарием. См. §4.2
-«Модель — самодостаточная».
+`MODEL_YAW_OFFSET = PI`. Модель экспортирована с forward в -Z.
+Правильно — пересобрать модель в Blender.
 
-**Правила приведения модели (DESIGN.md §4.2).** Обновление:
-модель должна быть:
-- Metric, Meters, Scale 1.0.
-- Высота 1.8 м по Z (под капсулу `Collider::capsule(0.4, 1.0)`).
-- Origin между ступней, по центру X/Y.
-- Forward в **-Y** в Blender = **+Z** в Bevy.
-- Rotation/scale/location применены (`Ctrl+A → All Transforms`).
-- Empty между арматурой и мешами убраны, трансформы схлопнуты.
+**Loading — ручной счёт, а не bevy_asset_loader.**
+`bevy_asset_loader 0.27` и `iyes_progress 0.17` несовместимы
+с Bevy 0.19 без правок (миграция API). Вместо них — свой ресурс
+`LoadingHandles` и `asset_server.get_load_state`.
 
-При следующем импорте модели — следовать этим правилам,
-`MODEL_YAW_OFFSET` убрать.
+**Camera2d для Loading обязательна.** В animeow нет камеры до
+InGame, UI без камеры не рендерится. `LoadingCamera` (Camera2d)
+спавнится на `Startup`, удаляется в `finish_loading`.
 
-**Камера — плавность во вводе, не в слежении.** Сглаживание
-слежения (`lerp` позиции рига к игроку) даёт эффект «укачивания» и
-смотрится «по-инди», не к месту. Плавность нужна в ощущении мыши:
-мышь двигает `target_yaw`/`target_pitch`, система `orbit_camera`
-ведёт текущие значения к целям через `alpha = 1 - exp(-k·dt)`. Риг
-при этом **жёстко** привязан к игроку (`follow_player` без lerp).
-Так камера «тянется» за мышью, как в Genshin, но не «отстаёт» от
-игрока. Зум — через тот же сглаживатель (`target_distance`).
-`camera_smoothing = 25.0` (1/с), подстраивается по ощущению.
+**Цвет фона различается для Loading и InGame.** Старт и Loading:
+чёрный. InGame: `srgb(0.05, 0.05, 0.1)`. `ClearColor` — глобальный
+ресурс, переключается в `finish_loading`. Граница видна визуально.
 
-**Разделение «текущее / цель» в CameraRig.** `yaw/pitch/distance` —
-что видно на экране сейчас; `target_yaw/target_pitch/target_distance`
-— куда мышь «тянет». Это позволяет сглаживать ввод, не сглаживая
-позицию рига. Смешивать нельзя — иначе либо укачивает, либо мышь
-«прилипает».
+**IslandReady — два события вместо одного.**
+`WorldInstanceReady` (сцена инстанцирована) и
+`ColliderConstructorHierarchyReady` (коллайдеры построены) —
+оба нужны. Одна система `finish_loading` ждёт `is_ready()` и
+делает переход. Не разбрасывать проверки по обсерверам — решает
+проблему порядка событий.
 
-**Отладочный визуал коллайдеров — через PhysicsDebugPlugin.**
-avian3d умеет рисовать коллайдеры линиями. Это даёт мгновенную
-визуальную проверку размеров капсулы, пола и любых препятствий.
-На ранних этапах важнее видеть коллизии, чем экономить FPS. Для
-релиза — обернуть в `#[cfg(debug_assertions)]` или фиче-флаг.
+**Пауза через `Time<Virtual>::pause()`.** Останавливает всё, что
+зависит от `Time`: физику avian, Tnua, анимации, cooldown.
+`FixedUpdate` получает delta = 0, тела не двигаются.
 
-**Остров — `main.glb` с trimesh-коллайдером из иерархии.**
-Остров грузится через `GameAssets.island_scene`. Коллайдер строится
-`ColliderConstructorHierarchy::new(ColliderConstructor::TrimeshFromMesh)`
-— avian сам обходит все меши внутри сцены и создаёт для каждого
-trimesh-коллайдер. Порядок компонентов важен: `RigidBody::Static` и
-`ColliderConstructorHierarchy` идут ДО `WorldAssetRoot`, иначе avian
-не увидит сцену в момент её появления.
-
-**Спавн игрока — по событию `ColliderConstructorHierarchyReady`.**
-Раньше игрок спавнился в `OnEnter(InGame)` параллельно с островом,
-и получалась «гонка загрузки»: игрок появлялся раньше, чем
-коллайдеры острова, и проваливался в пустоту. Решение — обсервер
-на `ColliderConstructorHierarchyReady`, который срабатывает, когда
-avian закончил строить коллайдеры. В этот момент и спавнится игрок.
-Это устраняет «гонку» без таймеров и «заморозок», через событийную
-модель ECS.
-
-`ColliderConstructorHierarchyReady` срабатывает **даже если
-коллайдеры не создались**. Поэтому в обсервере есть проверка
-`player_exists.is_empty()` — защита от повторного спавна.
-
-**Bevy 0.17+: `Trigger` → `On`.** В обсервере параметр события
-называется `On<Event>` (не `Trigger<Event>`). Доступ к цели события
-— через поле `trigger.entity`, а не через метод. Это ломающее
-изменение API между 0.16 и 0.17.
-
-**Ghost collisions на trimesh — решены архитектурно.** См. выше
-§«Переход с MoveAndSlide на bevy-tnua».
-
-**Minecraft — это воксели, а не тримеш.** Для понимания: в Minecraft
-физика работает на уровне отдельных блоков (кубов), а не на уровне
-поверхности. Движок проверяет AABB игрока только с теми блоками,
-которые он пересекает. Никаких «внутренних рёбер», никаких ghost
-collisions. Пещеры — это блоки воздуха внутри массива блоков.
-Тримеш так не может, потому что у него нет «адресов» — только
-вершины и треугольники.
-
-**Heightmap vs trimesh — разные инструменты.** Heightmap — это
-регулярная 2D-сетка высот (`y = f(x, z)`). Не может иметь нависаний
-и «низа». Trimesh — произвольная 3D-геометрия, может быть любой
-формы. Heightmap не даёт ghost collisions, но и не может быть
-островом с пещерами и нависающими скалами. Trimesh может всё, но
-даёт ghost collisions на краях. В играх типа «Ведьмака» земля —
-heightmap, а объекты (скалы, здания) — тримеши.
+**Промежуток Loading UI → модели — известный артефакт.**
+`WorldInstanceReady` срабатывает раньше, чем меши/материалы
+доходят до GPU. Визуально: Loading UI исчез, секунда пустого
+фона, потом модели. Отложено. Решения: (1) проверять
+`Assets::contains` для `Mesh3d`/`Image`, (2) ждать N кадров,
+(3) спец-хук на готовность рендера.
 
 10. Инструменты разработки (lab)
     Воркфлоу сборки контекста и применения ответов DeepSeek

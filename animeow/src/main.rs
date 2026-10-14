@@ -8,7 +8,6 @@ mod types;
 
 use bevy::prelude::*;
 
-use bevy_asset_loader::prelude::*;
 use lab_app_shell::{build_app, AppShellConfig};
 use states::{GameState, InGameState};
 
@@ -17,18 +16,18 @@ fn main() {
 
     let mut app = build_app(AppShellConfig {
         title: "Animeow".into(),
-        clear_color: Color::srgb(0.05, 0.05, 0.1),
+        // Стартовый фон — ЧЁРНЫЙ. Это фон загрузки и промежутка до неё.
+        // Синеватый фон мира включается в on_island_ready, когда игра готова.
+        clear_color: Color::BLACK,
         ..default()
     });
 
     app.init_state::<GameState>()
         .add_sub_state::<InGameState>()
-        .add_loading_state(
-            LoadingState::new(GameState::Loading)
-                .continue_to_state(GameState::InGame)
-                .load_collection::<assets::GameAssets>(),
-        )
-        // Обсервер на событие готовности коллайдеров острова.
+        // Обсервер: сцена полностью инстанцирована (меши, материалы, текстуры).
+        .add_observer(modes::game::on_scene_ready)
+        // Обсервер: коллайдеры построены. Переход в InGame — только
+        // когда оба события пришли (см. IslandReady).
         .add_observer(modes::game::on_island_ready)
         .add_plugins((
             core::CorePlugin,

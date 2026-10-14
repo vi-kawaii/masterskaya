@@ -9,8 +9,12 @@ use crate::core::physics::CharacterControlConfigHandle;
 use crate::states::GameState;
 use avian3d::prelude::*;
 use bevy::prelude::*;
+use bevy::world_serialization::WorldInstanceReady;
 use bevy_tnua::prelude::*;
 use bevy_tnua_avian3d::TnuaAvian3dSensorShape;
+
+/// Цвет фона мира. Отличается от фона загрузки (чёрный в main.rs).
+const WORLD_CLEAR_COLOR: Color = Color::srgb(0.05, 0.05, 0.1);
 
 pub struct GamePlugin;
 
@@ -18,7 +22,11 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<crate::types::GameSettings>()
             .init_resource::<crate::types::Score>()
-            .add_systems(OnEnter(GameState::InGame), spawn_island)
+            .init_resource::<IslandReady>()
+            .add_systems(
+                Update,
+                finish_loading.run_if(in_state(GameState::Loading)),
+            )
             .add_systems(OnExit(GameState::InGame), cleanup_game);
     }
 }
@@ -26,7 +34,23 @@ impl Plugin for GamePlugin {
 #[derive(Component)]
 pub struct Ground;
 
-fn spawn_island(mut commands: Commands, assets: Res<GameAssets>) {
+/// Флаг готовности острова: сцена инстанцирована + коллайдеры построены.
+#[derive(Resource, Default)]
+pub struct IslandReady {
+    pub scene_ready: bool,
+    pub colliders_ready: bool,
+    pub player_spawned: bool,
+    pub finished: bool,
+}
+
+impl IslandReady {
+    pub fn is_ready(&self) -> bool {
+        self.scene_ready && self.colliders_ready
+    }
+}
+
+pub fn spawn_island(commands: &mut Commands, assets: &GameAssets) {
+    println!("[game] spawn_island");
     commands.spawn((
         DirectionalLight {
             illuminance: 10_000.0,
@@ -47,23 +71,61 @@ fn spawn_island(mut commands: Commands, assets: Res<GameAssets>) {
     ));
 }
 
+pub fn on_scene_ready(
+    _trigger: On<WorldInstanceReady>,
+    mut ready: ResMut<IslandReady>,
+) {
+    println!("[game] on_scene_ready — сцена инстанцирована");
+    ready.scene_ready = true;
+}
+
 pub fn on_island_ready(
     _trigger: On<ColliderConstructorHierarchyReady>,
     mut commands: Commands,
     assets: Res<GameAssets>,
     config_handle: Res<CharacterControlConfigHandle>,
-    player_exists: Query<Entity, With<crate::types::Player>>,
+    mut ready: ResMut<IslandReady>,
 ) {
-    if !player_exists.is_empty() {
+    if ready.player_spawned {
         return;
     }
 
+    println!("[game] on_island_ready — коллайдеры готовы, спавним игрока");
     spawn_player_entity(&mut commands, &assets, &config_handle);
+    ready.colliders_ready = true;
+    ready.player_spawned = true;
 }
 
-/// Компенсация поворота модели относительно forward родителя.
-/// Модель anime-girl.glb экспортирована с forward в -Z, а Tnua использует +Z.
-/// Следующая модель должна быть приведена к +Z в Blender, тогда константа = 0.0.
+/// Переключение в InGame сразу, как только остров готов.
+/// Визуальный промежуток между удалением Loading UI и появлением
+/// моделей на экране будет убран позже — пока оставляем как есть.
+fn finish_loading(
+    mut ready: ResMut<IslandReady>,
+    mut next_state: ResMut<NextState<GameState>>,
+    mut commands: Commands,
+    mut clear: ResMut<ClearColor>,
+    ui: Query<Entity, With<crate::modes::loading::LoadingUi>>,
+    cam: Query<Entity, With<crate::modes::loading::LoadingCamera>>,
+) {
+    if !ready.is_ready() || ready.finished {
+        return;
+    }
+
+    println!("[game] остров готов — переход в InGame");
+
+    clear.0 = WORLD_CLEAR_COLOR;
+
+    for e in &ui {
+        commands.entity(e).despawn();
+    }
+    for e in &cam {
+        commands.entity(e).despawn();
+    }
+
+    ready.finished = true;
+    next_state.set(GameState::InGame);
+}
+
 const MODEL_YAW_OFFSET: f32 = std::f32::consts::PI;
 
 pub fn spawn_player_entity(
@@ -92,9 +154,7 @@ pub fn spawn_player_entity(
             parent.spawn((
                 crate::types::PlayerModel,
                 WorldAssetRoot(assets.player_scene.clone()),
-                // Смещение по Y — эмпирическое, подгоняет ноги модели к земле.
-                // Поворот по Y — компенсация forward модели (-Z → +Z).
-                Transform::from_xyz(0.0, -0.90, 0.0)
+                Transform::from_xyz(0.0, -0.92, 0.0)
                     .with_rotation(Quat::from_rotation_y(MODEL_YAW_OFFSET)),
             ));
         });
