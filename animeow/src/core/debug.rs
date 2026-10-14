@@ -1,8 +1,8 @@
-use crate::actor::character::Grounded;
 use crate::types::Player;
 use bevy::prelude::*;
 
-/// Отладочный текст с координатами игрока и флагом Grounded.
+/// Отладочный текст с координатами игрока.
+/// Grounded удалён — Tnua сам знает, на земле ли персонаж.
 #[derive(Component)]
 pub struct DebugCoordsText;
 
@@ -33,20 +33,17 @@ fn spawn_debug_coords(mut commands: Commands) {
     ));
 }
 
-/// Читает позицию игрока и Grounded, пишет в текст.
+/// Читает позицию игрока и пишет в текст.
 /// Работает в Update, читает актуальный Transform после FixedUpdate.
 fn update_debug_coords(
-    player: Query<(&Transform, &Grounded), With<Player>>,
+    player: Query<&Transform, With<Player>>,
     mut text: Query<&mut Text, With<DebugCoordsText>>,
 ) {
-    let Ok((t, g)) = player.single() else {
+    let Ok(t) = player.single() else {
         return;
     };
     let p = t.translation;
     for mut txt in &mut text {
-        txt.0 = format!(
-            "Pos: {:.1}, {:.1}, {:.1}   Grounded: {}",
-            p.x, p.y, p.z, g.0
-        );
+        txt.0 = format!("Pos: {:.1}, {:.1}, {:.1}", p.x, p.y, p.z);
     }
 }

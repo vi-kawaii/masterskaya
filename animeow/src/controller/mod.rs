@@ -1,5 +1,6 @@
 pub mod bot;
 pub mod player;
+pub mod scheme;
 
 use bevy::prelude::*;
 

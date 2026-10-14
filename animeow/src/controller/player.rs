@@ -1,20 +1,19 @@
-use crate::actor::character::Grounded;
 use crate::core::input::InputState;
 use crate::states::{GameState, InGameState};
-use crate::types::{DesiredYaw, GameSettings, Player, PlayerModel};
-use avian3d::prelude::*;
+use crate::types::Player;
 use bevy::prelude::*;
+use bevy_tnua::builtins::{TnuaBuiltinJump, TnuaBuiltinWalk};
+use bevy_tnua::prelude::*;
+
+use super::scheme::CharacterControlScheme;
 
 pub struct PlayerControllerPlugin;
 
 impl Plugin for PlayerControllerPlugin {
     fn build(&self, app: &mut App) {
-        // Игрок спавнится не здесь, а в modes/game/mod.rs по событию
-        // ColliderConstructorHierarchyReady. Здесь только системы движения.
         app.add_systems(
                 FixedUpdate,
-                (character_movement, rotate_model_towards_movement)
-                    .chain()
+                tnua_movement
                     .run_if(in_state(InGameState::Playing)),
             )
             .add_systems(Update, flatten_materials.run_if(in_state(InGameState::Playing)))
@@ -22,24 +21,16 @@ impl Plugin for PlayerControllerPlugin {
     }
 }
 
-fn character_movement(
+fn tnua_movement(
     input: Res<InputState>,
-    settings: Res<GameSettings>,
-    time: Res<Time>,
-    move_and_slide: MoveAndSlide,
     camera_query: Query<&Transform, (With<Camera3d>, Without<Player>)>,
-    mut query: Query<(
-        Entity,
-        &mut Transform,
-        &mut LinearVelocity,
-        &Collider,
-        &mut Grounded,
-        &mut DesiredYaw,
-    ), With<Player>>,
+    mut query: Query<&mut TnuaController<CharacterControlScheme>, With<Player>>,
 ) {
-    let camera_transform = match camera_query.single() {
-        Ok(cam) => cam,
-        Err(_) => return,
+    let Ok(camera_transform) = camera_query.single() else {
+        return;
+    };
+    let Ok(mut controller) = query.single_mut() else {
+        return;
     };
 
     let mut camera_forward = camera_transform.forward().as_vec3();
@@ -50,82 +41,20 @@ fn character_movement(
     camera_right.y = 0.0;
     let camera_right = camera_right.normalize_or_zero();
 
-    let dt = time.delta();
-    let dt_secs = dt.as_secs_f32();
+    let move_dir = camera_forward * input.move_dir.y + camera_right * input.move_dir.x;
+    let move_dir = move_dir.normalize_or_zero();
 
-    for (entity, mut transform, mut velocity, collider, mut grounded, mut desired_yaw) in
-        &mut query
-    {
-        let target_dir = (camera_forward * input.move_dir.y + camera_right * input.move_dir.x)
-            .normalize_or_zero();
+    // Скорость НЕ умножаем — она задана в конфиге (config.speed).
+    controller.initiate_action_feeding();
 
-        if target_dir != Vec3::ZERO {
-            desired_yaw.0 = target_dir.x.atan2(target_dir.z);
-        }
-
-        let speed = if input.sprint {
-            settings.sprint_speed
-        } else {
-            settings.run_speed
-        };
-
-        let target_velocity = target_dir * speed;
-        velocity.x = target_velocity.x;
-        velocity.z = target_velocity.z;
-
-        if grounded.0 && velocity.y <= 0.0 {
-            velocity.y = 0.0;
-            if input.jump_pressed {
-                velocity.y = settings.jump_velocity;
-            }
-        } else {
-            velocity.y += settings.gravity * dt_secs;
-        }
-
-        let filter = SpatialQueryFilter::from_excluded_entities([entity]);
-        let output = move_and_slide.move_and_slide(
-            collider,
-            transform.translation,
-            transform.rotation,
-            velocity.0,
-            dt,
-            &MoveAndSlideConfig::default(),
-            &filter,
-            |_hit| MoveAndSlideHitResponse::Accept,
-        );
-
-        transform.translation = output.position;
-        velocity.0 = output.projected_velocity;
-
-        let hit = move_and_slide.cast_move(
-            collider,
-            transform.translation,
-            transform.rotation,
-            Vec3::NEG_Y * 0.95,
-            0.01,
-            &filter,
-        );
-        grounded.0 = hit.is_some();
-    }
-}
-
-fn rotate_model_towards_movement(
-    settings: Res<GameSettings>,
-    time: Res<Time>,
-    player_query: Query<&DesiredYaw, With<Player>>,
-    mut model_query: Query<&mut Transform, With<PlayerModel>>,
-) {
-    let Ok(desired) = player_query.single() else {
-        return;
+    controller.basis = TnuaBuiltinWalk {
+        desired_motion: move_dir,   // только направление!
+        desired_forward: Dir3::new(move_dir).ok(),
+        ..default()
     };
 
-    let target_rotation = Quat::from_rotation_y(desired.0);
-
-    let dt = time.delta_secs();
-    let alpha = 1.0 - (-settings.turn_speed * dt).exp();
-
-    for mut transform in &mut model_query {
-        transform.rotation = transform.rotation.slerp(target_rotation, alpha);
+    if input.jump_pressed {
+        controller.action(CharacterControlScheme::Jump(TnuaBuiltinJump::default()));
     }
 }
 

@@ -1,4 +1,4 @@
-use bevy::prelude::{Component, Vec3};
+use bevy::prelude::Component;
 
 /// Базовые скорости для locomotion.
 /// Пока только заготовка — реально используются `GameSettings`.
@@ -35,7 +35,4 @@ impl Default for Health {
     }
 }
 
-/// Стоит ли персонаж на земле (cast_move вниз).
-/// Пишется системой `character_movement` в FixedUpdate.
-#[derive(Component, Default)]
-pub struct Grounded(pub bool);
+// `Grounded` удалён: Tnua сам отслеживает состояние «на земле» через TnuaController.

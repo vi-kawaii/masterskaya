@@ -4,9 +4,13 @@ pub mod hud;
 pub mod move_;
 
 use crate::assets::GameAssets;
+use crate::controller::scheme::CharacterControlScheme;
+use crate::core::physics::CharacterControlConfigHandle;
 use crate::states::GameState;
 use avian3d::prelude::*;
 use bevy::prelude::*;
+use bevy_tnua::prelude::*;
+use bevy_tnua_avian3d::TnuaAvian3dSensorShape;
 
 pub struct GamePlugin;
 
@@ -22,9 +26,7 @@ impl Plugin for GamePlugin {
 #[derive(Component)]
 pub struct Ground;
 
-/// Спавнит только остров. Игрок появится позже — по событию готовности коллайдеров.
 fn spawn_island(mut commands: Commands, assets: Res<GameAssets>) {
-    // Свет (тени выключены)
     commands.spawn((
         DirectionalLight {
             illuminance: 10_000.0,
@@ -34,9 +36,6 @@ fn spawn_island(mut commands: Commands, assets: Res<GameAssets>) {
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.8, -0.5, 0.0)),
     ));
 
-    // Остров — статическая геометрия с коллайдерами из мешей.
-    // FIX_INTERNAL_EDGES устраняет ghost collisions на внутренних рёбрах
-    // тримеша (персонаж перестаёт «парить» над плоскими участками).
     commands.spawn((
         Ground,
         RigidBody::Static,
@@ -48,44 +47,55 @@ fn spawn_island(mut commands: Commands, assets: Res<GameAssets>) {
     ));
 }
 
-/// Обсервер: срабатывает, когда ColliderConstructorHierarchy закончил работу.
-/// Спавним игрока именно здесь, а не в OnEnter.
-/// Bevy 0.17+: Trigger → On, trigger.entity — это поле, а не метод.
 pub fn on_island_ready(
     _trigger: On<ColliderConstructorHierarchyReady>,
     mut commands: Commands,
     assets: Res<GameAssets>,
+    config_handle: Res<CharacterControlConfigHandle>,
     player_exists: Query<Entity, With<crate::types::Player>>,
 ) {
-    // Защита от повторного спавна (событие может сработать несколько раз)
     if !player_exists.is_empty() {
         return;
     }
 
-    // Спавним игрока — коллайдеры острова уже в мире.
-    spawn_player_entity(&mut commands, &assets);
+    spawn_player_entity(&mut commands, &assets, &config_handle);
 }
 
-/// Вынесена отдельно, чтобы вызывать из обсервера.
-pub fn spawn_player_entity(commands: &mut Commands, assets: &GameAssets) {
+/// Компенсация поворота модели относительно forward родителя.
+/// Модель anime-girl.glb экспортирована с forward в -Z, а Tnua использует +Z.
+/// Следующая модель должна быть приведена к +Z в Blender, тогда константа = 0.0.
+const MODEL_YAW_OFFSET: f32 = std::f32::consts::PI;
+
+pub fn spawn_player_entity(
+    commands: &mut Commands,
+    assets: &GameAssets,
+    config_handle: &CharacterControlConfigHandle,
+) {
     commands
         .spawn((
             crate::types::Player,
-            crate::actor::character::Grounded(false),
             crate::actor::character::MovementStats::default(),
             crate::types::DesiredYaw::default(),
-            RigidBody::Kinematic,
-            CustomPositionIntegration,
+
+            RigidBody::Dynamic,
             Collider::capsule(0.4, 1.0),
+            LockedAxes::new().lock_rotation_x().lock_rotation_z(),
+
+            TnuaController::<CharacterControlScheme>::default(),
+            TnuaConfig::<CharacterControlScheme>(config_handle.0.clone()),
+            TnuaAvian3dSensorShape(Collider::sphere(0.1)),
+
             Transform::from_xyz(0.0, 2.0, 0.0),
-            LinearVelocity::default(),
             Visibility::default(),
         ))
         .with_children(|parent| {
             parent.spawn((
                 crate::types::PlayerModel,
                 WorldAssetRoot(assets.player_scene.clone()),
-                Transform::from_xyz(0.0, -0.9, 0.0),
+                // Смещение по Y — эмпирическое, подгоняет ноги модели к земле.
+                // Поворот по Y — компенсация forward модели (-Z → +Z).
+                Transform::from_xyz(0.0, -0.90, 0.0)
+                    .with_rotation(Quat::from_rotation_y(MODEL_YAW_OFFSET)),
             ));
         });
 }
