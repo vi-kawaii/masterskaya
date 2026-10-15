@@ -1,13 +1,16 @@
+use crate::actor::weapon::WeaponDef;
 use crate::assets::GameAssets;
 use crate::states::GameState;
 use bevy::asset::LoadState;
 use bevy::prelude::*;
+use bevy_common_assets::ron::RonAssetPlugin;
 
 pub struct LoadingPlugin;
 
 impl Plugin for LoadingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_loading_camera)
+        app.add_plugins(RonAssetPlugin::<WeaponDef>::new(&["weapon.ron"]))
+            .add_systems(Startup, spawn_loading_camera)
             .add_systems(OnEnter(GameState::Loading), (setup_loading, start_loading))
             .add_systems(
                 Update,
@@ -15,10 +18,6 @@ impl Plugin for LoadingPlugin {
                     .chain()
                     .run_if(in_state(GameState::Loading)),
             );
-        // cleanup_loading и cleanup_loading_camera больше НЕ на OnExit(Loading).
-        // Их вызывает on_island_ready в modes/game/mod.rs, когда остров
-        // реально готов. Это убирает визуальную паузу между удалением UI
-        // и появлением игры.
     }
 }
 
@@ -34,7 +33,6 @@ struct LoadingProgressText;
 #[derive(Component)]
 struct LoadingBarFill;
 
-/// Хендлы, за которыми следим. Счётчик done/total.
 #[derive(Resource, Default)]
 pub struct LoadingHandles {
     pub handles: Vec<UntypedHandle>,
@@ -44,7 +42,6 @@ pub struct LoadingHandles {
     pub elapsed: f32,
 }
 
-/// Camera2d для рендера UI загрузки.
 fn spawn_loading_camera(mut commands: Commands) {
     println!("[loading] spawn_loading_camera");
     commands.spawn((Camera2d, Msaa::Off, LoadingCamera));
@@ -125,6 +122,13 @@ fn start_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
     let wheel4_scene: Handle<WorldAsset> =
         asset_server.load("models/wheel4.glb#Scene0");
 
+    let weapon_pistol: Handle<WeaponDef> =
+        asset_server.load("weapons/pistol.weapon.ron");
+    let weapon_rifle: Handle<WeaponDef> =
+        asset_server.load("weapons/rifle.weapon.ron");
+    let weapon_shotgun: Handle<WeaponDef> =
+        asset_server.load("weapons/shotgun.weapon.ron");
+
     commands.insert_resource(GameAssets {
         player_scene: player_scene.clone(),
         island_scene: island_scene.clone(),
@@ -133,6 +137,9 @@ fn start_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
         wheel2_scene: wheel2_scene.clone(),
         wheel3_scene: wheel3_scene.clone(),
         wheel4_scene: wheel4_scene.clone(),
+        weapon_pistol: weapon_pistol.clone(),
+        weapon_rifle: weapon_rifle.clone(),
+        weapon_shotgun: weapon_shotgun.clone(),
     });
 
     let mut loading = LoadingHandles::default();
@@ -143,6 +150,9 @@ fn start_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
     loading.handles.push(wheel2_scene.untyped());
     loading.handles.push(wheel3_scene.untyped());
     loading.handles.push(wheel4_scene.untyped());
+    loading.handles.push(weapon_pistol.untyped());
+    loading.handles.push(weapon_rifle.untyped());
+    loading.handles.push(weapon_shotgun.untyped());
     loading.min_display = 0.5;
     commands.insert_resource(loading);
 }
@@ -185,9 +195,6 @@ fn check_loading(
     }
 }
 
-/// Прогресс-бар. Ресурс `LoadingHandles` берётся как `Option`,
-/// чтобы не паниковать, если он уже удалён (например, когда
-/// on_island_ready почистил его, а Loading ещё не полностью ушёл).
 fn update_loading_ui(
     loading: Option<Res<LoadingHandles>>,
     mut text_q: Query<&mut Text, With<LoadingProgressText>>,

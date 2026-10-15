@@ -86,6 +86,7 @@ player.rs # игрок
 npc.rs # NPC
 vehicle.rs # транспорт (визуальный каркас)
 shoot.rs # стрельба
+weapon.rs # оружие: WeaponDef, WeaponKind, WeaponState, PlayerLoadout
 abilities.rs # скиллы
 health.rs # HP/статусы
 controller/ # управление
@@ -101,7 +102,7 @@ data.rs
 tracker.rs
 inventory/ # инвентарь
 ui/ # UI
-hud.rs
+hud.rs # HUD: крестик, HP, имя оружия, патроны
 menu.rs
 dialog.rs
 inventory_ui.rs
@@ -249,13 +250,63 @@ Yaw/pitch от мыши, зум колесом, коллизия через rayc
 - Зум — через `target_distance`.
 - `camera_smoothing = 25.0` (1/с).
 
-4.4. Бой
-Гибрид: огнестрел (hitscan + снаряды) + ближний бой + скиллы.
+4.4. Бой и оружие
+**Статус: каркас.** Оружие описано данными, показывается в HUD,
+переключается игроком. Стрельбы, рейкастов, урона, коллизий — нет.
+Специально: сначала модель данных, потом логика.
 
-Оружие — компонент: Weapon { damage, cooldown, range, ammo, kind }.
+**Модель оружия (`actor/weapon.rs`).**
+- `WeaponKind` — `Pistol | Rifle | Shotgun`. Enum в RON пишется
+  без кавычек: `kind: Pistol`.
+- `WeaponDef` — ассет, `Asset` + `TypePath` + `Deserialize`.
+  Поля: `id`, `name`, `kind`, `damage`, `fire_rate`, `mag_size`,
+  `reserve`, `range`.
+- `WeaponState` — рантайм-состояние экземпляра: `def`, `loaded`,
+  `reserve`.
+- `PlayerLoadout` — ресурс с `Vec<WeaponState>` и `active: usize`.
 
-Скиллы — компонент: Ability { cooldown, cost, effect }.
+**Файлы оружия (`assets/weapons/*.weapon.ron`).**
+Один файл — одна пушка. Расширение обязательно `.weapon.ron` —
+это суффикс для `RonAssetPlugin::<WeaponDef>::new(&["weapon.ron"])`.
+Если назвать просто `.ron`, ассет не подхватится, потому что
+плагин смотрит на **всю** строку расширения после первой точки.
 
+Пример (`assets/weapons/pistol.weapon.ron`):
+```ron
+(
+    id: "pistol",
+    name: "Pistol",
+    kind: Pistol,
+    damage: 12.0,
+    fire_rate: 0.25,
+    mag_size: 12,
+    reserve: 60,
+    range: 60.0,
+)
+```
+
+**Загрузка.** В `modes/loading.rs` регистрируется
+`RonAssetPlugin::<WeaponDef>::new(&["weapon.ron"])` и грузятся
+три хендла (`weapon_pistol`, `weapon_rifle`, `weapon_shotgun`),
+которые кладутся в `GameAssets`. Хендлы добавляются в
+`LoadingHandles`, чтобы прогресс-бар их учитывал.
+
+**Сборка лоадаута.** В `ui/hud.rs::setup_hud` (при `OnEnter(InGame)`)
+из `GameAssets` и `Assets<WeaponDef>` собирается `PlayerLoadout`.
+Ресурс `PlayerLoadout` инициализируется в `HudPlugin::build`
+через `init_resource::<PlayerLoadout>()` — без этого
+`ResMut<PlayerLoadout>` паникует «Resource does not exist».
+
+**Переключение.** Цифры `1` / `2` / `3` в `InGameState::Playing`
+меняют `loadout.active`. Система `switch_weapon` живёт **только**
+в `Playing` — в `Paused` и `Dialog` она не крутится. Это важно:
+в диалоге `1` / `2` заняты выбором реплики, и они не должны
+дёргать оружие.
+
+**Гибридный бой (план).**
+Огнестрел (hitscan + снаряды) + ближний бой + скиллы.
+Оружие — компонент: `Weapon { damage, cooldown, range, ammo, kind }`.
+Скиллы — компонент: `Ability { cooldown, cost, effect }`.
 Элементы/статусы — позже.
 
 4.5. Транспорт
@@ -421,13 +472,27 @@ State machine: idle / patrol / alert / chase / attack / flee / talk.
 4.8. UI
 MainMenu, Pause, Settings, Inventory, Map, QuestLog, Dialog, HUD.
 
-HUD: HP, стамина, патроны, миникарта, компас, квест-трекер.
+**HUD — что на экране (каркас готов):**
+- Крестик `+` по центру.
+- `HP: 100 / 100` в левом верхнем углу (заглушка, константа).
+- Имя оружия и `loaded / reserve` в правом нижнем углу
+  (обновляется из `PlayerLoadout`).
+- FPS-оверлей (из `lab-app-shell`).
+- Отладочный текст с координатами игрока (левый нижний угол,
+  `core/debug.rs`).
 
-**Статус:**
+**HUD — что НЕ сделано:**
+- Реальные HP/стамина/патроны — после системы боя.
+- Миникарта, компас, квест-трекер.
+- Прицельная стрельба (у нас пока `+`).
+- Анимация получения урона (вспышка по краям).
+
+**Статус по экранам:**
 - Pause — [x] готов
 - Loading — [x] готов
 - Dialog — [~] базовый UI готов, ввод `1`/`2`, закрытие по `Esc`
-- Остальное — [ ]
+- HUD — [~] каркас: крестик, HP, имя оружия, патроны
+- Inventory, Map, QuestLog, MainMenu — [ ]
 
 4.9. Сохранения
 Сериализация: позиция игрока, дельта мира, инвентарь, квесты, флаги.
@@ -504,6 +569,29 @@ Esc в `InGameState::Playing` → `InGameState::Paused`. Esc обратно.
 диалог сам ловит `Esc` и закрывается. Иначе первый же `Esc`
 в диалоге уходил бы в паузу, а не в логику диалога.
 
+4.13. Разделение состояний и ввод
+Несколько правил, которые легко забыть, но которые важны
+для непротиворечивого поведения.
+
+**HUD не реагирует в диалоге.** `switch_weapon` и
+`update_hud_text` в `ui/hud.rs` живут под
+`run_if(in_state(InGameState::Playing))`. В `Dialog` и `Paused`
+они не крутятся. Причина: в диалоге `1` / `2` — это выбор
+реплики. Если бы `switch_weapon` работал и там, цифры дёргали
+бы оружие параллельно с диалогом.
+
+**Дублирующиеся клавиши — явный конфликт, решается стейтом.**
+`1` / `2` / `3` — переключение оружия (в `Playing`), `1` / `2` —
+выбор реплики (в `Dialog`). Одно и то же физическое действие
+имеет разный смысл в разных стейтах. Разделяем через
+`run_if(in_state(...))`, а не через `if` внутри системы.
+
+**Setup и cleanup — на `GameState`, update — на `InGameState`.**
+HUD спавнится один раз при входе в `InGame`, живёт всё время,
+что мы в игре. Обновления — только в `Playing`. Так HUD не
+пропадает при паузе (он висит поверх `PAUSED`), и не
+пересоздаётся при возврате из диалога.
+
 5. Что явно НЕ делаем на старте
    ❌ Мультиплеер.
 
@@ -534,6 +622,8 @@ Esc в `InGameState::Playing` → `InGameState::Paused`. Esc обратно.
    Raycast-vehicle — сложная настройка подвески Начать с
    визуального каркаса (§4.5), потом постепенно добавлять
    физику: прилипание → газ/тормоз → руль → трение
+   Конфликты клавиш (1/2 в диалоге и в HUD) Явное разделение
+   через `run_if(in_state(...))`, не через `if` внутри (§4.13)
 
 7. План работ
    Каждый этап заканчивается играбельным билдом.
@@ -598,10 +688,30 @@ TnuaConfig, TnuaAvian3dSensorShape, LockedAxes
 Этап 4. Бой + AI + HUD
 Цель: стрелять, попадать в ботов, видеть HP.
 
+☑ Этап 4.1. Оружие (каркас)
+☑ actor/weapon.rs: WeaponKind, WeaponDef, WeaponState, PlayerLoadout
+☑ assets/weapons/*.weapon.ron: pistol, rifle, shotgun
+☑ modes/loading.rs: RonAssetPlugin::<WeaponDef>, загрузка хендлов
+☑ assets.rs: поля weapon_pistol/rifle/shotgun
+☑ ui/hud.rs: крестик, HP-заглушка, имя оружия, патроны
+☑ switch_weapon: цифры 1/2/3 в Playing
+☑ HUD не реагирует на 1/2 в Dialog (§4.13)
+
+□ Этап 4.2. Стрельба
+□ actor/shoot.rs: hitscan/raycast от игрока
+□ InputState: fire_pressed
+□ Muzzle flash, трассер (простые меши, без эффектов)
+□ Патроны реально уменьшаются при выстреле
+□ Перезарядка (`R`)
+
+□ Этап 4.3. Здоровье и урон
 □ actor/health.rs
-□ actor/shoot.rs: Weapon, hitscan
+□ HP реально уменьшается при попадании
+□ HUD читает Health, а не константу
+
+□ Этап 4.4. Боты и AI
 □ controller/bot.rs: state machine idle/patrol/chase/attack
-□ ui/hud.rs: HP, патроны, прицел
+□ Спавн тестового бота
 
 Этап 5. Vehicle
 Цель: сесть в машину, поехать, выйти.
@@ -695,6 +805,8 @@ WheelModel, Wheel { steerable, powered }
    actor/*, controller/bot.rs — пустые, наполнять по этапам.
    modes/game/dialog/ — [~] прототип готов (см. §4.6).
    Осталось: загрузка .ron, NPC-триггер, ветвление по флагам.
+   actor/weapon.rs — модель оружия + PlayerLoadout (см. §4.4).
+   ui/hud.rs — HUD (крестик, HP, оружие, патроны).
    modes/game/{fight,hud,move_}.rs — пустые, наполнять по этапам.
 
 9. Журнал решений
@@ -863,6 +975,50 @@ Bevy в Y-up.
 пропадал через паузу, а не через свою логику, и это путало бы
 поведение. Если позже понадобится открывать паузу поверх
 диалога — сделать это явной веткой.
+
+**Оружие — данные, а не ECS-сущность (пока).**
+`WeaponDef` (ассет из `.ron`) + `WeaponState` (рантайм: loaded,
+reserve) + `PlayerLoadout` (ресурс с Vec и active). Не плодим
+ECS-сущности для пушек, пока нет стрельбы. Когда понадобится
+прицепить пушку к NPC или разложить по миру — превратим
+`PlayerLoadout` в компонент или сделаем отдельный
+`WeaponSlot`. Пока — ресурс.
+
+**`assets/weapons/*.weapon.ron` — суффикс обязателен.**
+`RonAssetPlugin::<WeaponDef>::new(&["weapon.ron"])` матчит всю
+строку расширения после первой точки. Файл `pistol.ron` не
+подхватится — расширение `ron`, а не `weapon.ron`. То же самое
+будет с диалогами (`.dialog.ron`), квестами (`.quest.ron`)
+и всем остальным. Это плата за то, чтобы `bevy_common_assets`
+мог разводить несколько типов `.ron` в одном проекте.
+
+**Ошибка в RON: `kind: "Pistol"` vs `kind: Pistol`.**
+`WeaponKind` — enum. В RON варианты enum пишутся как идентификаторы
+**без кавычек**: `kind: Pistol`. Со кавычками парсер ругается
+«Expected identifier». То же будет с любыми enum-полями в
+будущих `.ron` (диалоги, квесты).
+
+**HUD: `PlayerLoadout` инициализируется в плагине, а не в setup.**
+`init_resource::<PlayerLoadout>()` в `HudPlugin::build`. Без
+этого `ResMut<PlayerLoadout>` в `setup_hud` паникует
+«Resource does not exist». Правило для всех новых ресурсов
+с `ResMut` в setup-системах: либо `init_resource` в плагине,
+либо `Option<ResMut<T>>`, либо `If<Res<T>>`.
+
+**HUD: setup и cleanup на `GameState`, update на `InGameState`.**
+HUD спавнится один раз при входе в `InGame`, живёт до выхода.
+Обновление и переключение оружия — только в `Playing`. В `Paused`
+и `Dialog` update-системы не крутятся. Это (1) делает HUD
+статичным в паузе (он висит поверх `PAUSED`, не мерцает),
+(2) убирает конфликт `1`/`2` с диалогом.
+
+**`1`/`2` в `Playing` и `1`/`2` в `Dialog` — разные системы,
+разведённые стейтом.** Классический конфликт клавиш. Решение:
+не `if in_dialog { ... } else { ... }` внутри одной системы,
+а две отдельные системы под разными `run_if(in_state(...))`.
+Причина: система, которая знает про оба стейта, становится
+комком логики. Разделение по стейту — чище и не даёт
+случайных протечек (например, `switch_weapon` в диалоге).
 
 10. Инструменты разработки (lab)
     Воркфлоу сборки контекста и применения ответов DeepSeek

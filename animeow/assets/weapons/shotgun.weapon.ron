@@ -1,0 +1,10 @@
+(
+    id: "shotgun",
+    name: "Shotgun",
+    kind: Shotgun,
+    damage: 60.0,
+    fire_rate: 0.9,
+    mag_size: 6,
+    reserve: 24,
+    range: 25.0,
+)

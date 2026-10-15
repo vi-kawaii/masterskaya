@@ -1,0 +1,10 @@
+(
+    id: "rifle",
+    name: "Assault Rifle",
+    kind: Rifle,
+    damage: 20.0,
+    fire_rate: 0.1,
+    mag_size: 30,
+    reserve: 180,
+    range: 120.0,
+)

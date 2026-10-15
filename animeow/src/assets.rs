@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
-/// Ассеты, которые грузим вручную и следим за прогрессом.
-/// Заполняется в `modes/loading.rs::start_loading`.
+use crate::actor::weapon::WeaponDef;
+
 #[derive(Resource, Default)]
 pub struct GameAssets {
     pub player_scene: Handle<WorldAsset>,
@@ -12,4 +12,8 @@ pub struct GameAssets {
     pub wheel2_scene: Handle<WorldAsset>,
     pub wheel3_scene: Handle<WorldAsset>,
     pub wheel4_scene: Handle<WorldAsset>,
+
+    pub weapon_pistol: Handle<WeaponDef>,
+    pub weapon_rifle: Handle<WeaponDef>,
+    pub weapon_shotgun: Handle<WeaponDef>,
 }
