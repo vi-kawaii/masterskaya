@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::states::{GameState, InGameState};
 use bevy::prelude::*;
 
@@ -6,45 +8,46 @@ pub struct PausePlugin;
 impl Plugin for PausePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, toggle_pause.run_if(in_state(GameState::InGame)))
-            .add_systems(
-                OnEnter(InGameState::Paused),
-                (setup_pause_ui, pause_time),
-            )
-            .add_systems(
-                OnExit(InGameState::Paused),
-                (cleanup_pause_ui, unpause_time),
-            );
+            .add_systems(OnEnter(InGameState::Paused), setup_pause_ui)
+            .add_systems(OnExit(InGameState::Paused), cleanup_pause_ui);
     }
 }
 
 #[derive(Component)]
 struct PauseUi;
 
+/// Пауза и снятие паузы делаются **в том же кадре**, что и переключение
+/// стейта. Иначе между `next.set(Paused)` и `OnEnter(Paused)` успевает
+/// пройти один `FixedUpdate` — и физика делает лишний тик.
+///
+/// `Time<Virtual>::pause()` останавливает и `Time`, и `Time<Fixed>`.
+/// Дополнительно сбрасываем аккумулятор `Time<Fixed>`, чтобы не было
+/// «хвоста» из уже накопленной, но не потраченной дельты.
 fn toggle_pause(
     keys: Res<ButtonInput<KeyCode>>,
     current: Res<State<InGameState>>,
     mut next: ResMut<NextState<InGameState>>,
+    mut virtual_time: ResMut<Time<Virtual>>,
+    mut fixed_time: ResMut<Time<Fixed>>,
 ) {
-    if keys.just_pressed(KeyCode::Escape) {
-        match current.get() {
-            InGameState::Playing => next.set(InGameState::Paused),
-            InGameState::Paused => next.set(InGameState::Playing),
+    if !keys.just_pressed(KeyCode::Escape) {
+        return;
+    }
+    match current.get() {
+        InGameState::Playing => {
+            println!("[pause] time paused");
+            virtual_time.pause();
+            // Сбросить накопленный overstep FixedUpdate,
+            // чтобы не было «догоняющих» тиков физики после паузы.
+            fixed_time.discard_overstep(Duration::MAX);
+            next.set(InGameState::Paused);
+        }
+        InGameState::Paused => {
+            println!("[pause] time unpaused");
+            virtual_time.unpause();
+            next.set(InGameState::Playing);
         }
     }
-}
-
-/// Пауза физики, анимаций, cooldown-таймеров и всего, что зависит от Time.
-/// `Time<Virtual>` управляет и обычным `Time`, и `Time<Fixed>`.
-/// Когда виртуальное время на паузе, `FixedUpdate` получает delta = 0,
-/// и avian (вместе с Tnua) не двигает тела.
-fn pause_time(mut time: ResMut<Time<Virtual>>) {
-    println!("[pause] time paused");
-    time.pause();
-}
-
-fn unpause_time(mut time: ResMut<Time<Virtual>>) {
-    println!("[pause] time unpaused");
-    time.unpause();
 }
 
 fn setup_pause_ui(mut commands: Commands) {
