@@ -88,7 +88,16 @@ pub fn run(cwd: &Path, restart_after: bool) -> Result<(), String> {
                             if restart_after && (!w.is_empty() || !d.is_empty()) {
                                 println!("🔄 Перезапуск проекта...");
                                 println!();
-                                if let Err(e) = crate::run::run(cwd, None) {
+                                // once=true: запускаем проект один раз
+                                // и возвращаемся к слушанию буфера —
+                                // без цикла выбора.
+                                if let Err(e) = crate::run::run_with_options(
+                                    cwd,
+                                    crate::run::RunOptions {
+                                        package: None,
+                                        once: true,
+                                    },
+                                ) {
                                     eprintln!("❌ Ошибка перезапуска: {e}");
                                 }
                                 println!();

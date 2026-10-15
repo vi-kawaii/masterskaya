@@ -5,6 +5,9 @@
 //!
 //! Помнит последний запущенный пакет в `.lab_run_cache` и предлагает его
 //! первым при следующем запуске.
+//!
+//! После завершения проекта (успешного, с ошибкой или падения) снова
+//! показывает выбор — чтобы не перезапускать таску вручную.
 
 use dialoguer::{theme::ColorfulTheme, Select};
 use std::fs;
@@ -24,7 +27,34 @@ struct RunnableProject {
     display: String,
 }
 
+/// Опции запуска: аргумент командной строки (если был) и режим «один раз».
+pub struct RunOptions {
+    /// Если Some — запустить только этот проект.
+    pub package: Option<String>,
+    /// Если true — после завершения проекта не показывать меню, выйти.
+    pub once: bool,
+}
+
+impl Default for RunOptions {
+    fn default() -> Self {
+        Self {
+            package: None,
+            once: false,
+        }
+    }
+}
+
 pub fn run(cwd: &Path, arg: Option<&str>) -> Result<(), String> {
+    run_with_options(
+        cwd,
+        RunOptions {
+            package: arg.map(|s| s.to_string()),
+            once: false,
+        },
+    )
+}
+
+pub fn run_with_options(cwd: &Path, opts: RunOptions) -> Result<(), String> {
     let projects = scan_runnable(cwd);
 
     if projects.is_empty() {
@@ -34,11 +64,11 @@ pub fn run(cwd: &Path, arg: Option<&str>) -> Result<(), String> {
         ));
     }
 
-    // Явно указан аргумент — запускаем его.
-    if let Some(name) = arg {
+    // Явно указан аргумент — ищем его среди найденных.
+    if let Some(ref name) = opts.package {
         let p = projects
             .iter()
-            .find(|p| p.package == name || p.display == name)
+            .find(|p| p.package == *name || p.display == *name)
             .ok_or_else(|| {
                 format!(
                     "проект '{name}' не найден. Доступно: {}",
@@ -49,19 +79,79 @@ pub fn run(cwd: &Path, arg: Option<&str>) -> Result<(), String> {
                         .join(", ")
                 )
             })?;
-        return cargo_run(p, cwd);
+        if opts.once {
+            return cargo_run(p, cwd);
+        }
+        return run_loop(cwd, &projects, Some(&p.package));
     }
 
     // Один проект — без вопроса.
     if projects.len() == 1 {
-        return cargo_run(&projects[0], cwd);
+        if opts.once {
+            return cargo_run(&projects[0], cwd);
+        }
+        return run_loop(cwd, &projects, None);
     }
 
-    // Несколько — читаем кэш и предлагаем его первым.
-    let last_run_package = read_run_cache(cwd);
+    if opts.once {
+        // Без цикла: выбрать один раз и выйти.
+        let last_run_package = read_run_cache(cwd);
+        let choice = pick(&projects, last_run_package.as_deref())?;
+        return cargo_run(&projects[choice], cwd);
+    }
 
-    let choice = pick(&projects, last_run_package.as_deref())?;
-    cargo_run(&projects[choice], cwd)
+    run_loop(cwd, &projects, None)
+}
+
+/// Цикл: выбор → запуск → завершение → снова выбор.
+/// `initial_package` — если Some, первый запуск без вопроса.
+fn run_loop(
+    cwd: &Path,
+    projects: &[RunnableProject],
+    initial_package: Option<&str>,
+) -> Result<(), String> {
+    let mut first = true;
+    let mut forced_package = initial_package.map(|s| s.to_string());
+
+    loop {
+        let last_run_package = read_run_cache(cwd);
+        let last_ref = forced_package.as_deref().or(last_run_package.as_deref());
+
+        let choice = if first && forced_package.is_some() {
+            // Первый запуск с явно указанным пакетом — без вопроса.
+            let name = forced_package.as_deref().unwrap();
+            projects
+                .iter()
+                .position(|p| p.package == name || p.display == name)
+                .ok_or_else(|| format!("проект '{name}' не найден"))?
+        } else {
+            pick(projects, last_ref)?
+        };
+
+        first = false;
+        // После первого запуска больше не форсируем.
+        forced_package = None;
+
+        match cargo_run(&projects[choice], cwd) {
+            Ok(()) => {
+                println!();
+                println!("═══════════════════════════════════════");
+                println!("✅ Проект завершился нормально");
+                println!("═══════════════════════════════════════");
+            }
+            Err(e) => {
+                println!();
+                println!("═══════════════════════════════════════");
+                println!("⚠️  Проект завершился с ошибкой:");
+                println!("   {e}");
+                println!("═══════════════════════════════════════");
+            }
+        }
+
+        println!();
+        println!("Снова показываю меню выбора проекта. Ctrl+C — выйти.");
+        println!();
+    }
 }
 
 /// Обходит дерево от cwd, находит все папки с Cargo.toml.
@@ -181,7 +271,7 @@ fn pick(projects: &[RunnableProject], last_run: Option<&str>) -> Result<usize, S
         })
         .collect();
 
-    let default_pos = if last_run_original_index.is_some() { 0 } else { 0 };
+    let default_pos = 0;
 
     let chosen_pos = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Что запустить?")
@@ -197,8 +287,10 @@ fn pick(projects: &[RunnableProject], last_run: Option<&str>) -> Result<usize, S
 /// Запускает `cargo run -p <package>` в папке проекта.
 /// Перед запуском пишет package в кэш.
 fn cargo_run(p: &RunnableProject, workspace_root: &Path) -> Result<(), String> {
+    println!();
     println!("▶ cargo run -p {}", p.package);
     println!("  (cwd: {})", p.dir.display());
+    println!();
 
     // Записываем в кэш до запуска, чтобы при следующем вызове
     // этот проект шёл первым.
