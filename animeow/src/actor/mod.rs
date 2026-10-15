@@ -1,5 +1,6 @@
 pub mod character;
 pub mod shoot;
+pub mod vehicle;
 
 use bevy::prelude::*;
 
@@ -10,6 +11,6 @@ impl Plugin for ActorPlugin {
 }
 
 /// Общая сущность: игрок, бот, NPC.
-/// Пока пустой маркер — наполниим позже.
+/// Пока пустой маркер — наполним позже.
 #[derive(Component)]
 pub struct Actor;

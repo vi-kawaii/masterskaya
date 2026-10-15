@@ -114,14 +114,35 @@ fn start_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
     let island_scene: Handle<WorldAsset> =
         asset_server.load("models/main.glb#Scene0");
 
+    let car_scene: Handle<WorldAsset> =
+        asset_server.load("models/fast-car.glb#Scene0");
+    let wheel1_scene: Handle<WorldAsset> =
+        asset_server.load("models/wheel1.glb#Scene0");
+    let wheel2_scene: Handle<WorldAsset> =
+        asset_server.load("models/wheel2.glb#Scene0");
+    let wheel3_scene: Handle<WorldAsset> =
+        asset_server.load("models/wheel3.glb#Scene0");
+    let wheel4_scene: Handle<WorldAsset> =
+        asset_server.load("models/wheel4.glb#Scene0");
+
     commands.insert_resource(GameAssets {
         player_scene: player_scene.clone(),
         island_scene: island_scene.clone(),
+        car_scene: car_scene.clone(),
+        wheel1_scene: wheel1_scene.clone(),
+        wheel2_scene: wheel2_scene.clone(),
+        wheel3_scene: wheel3_scene.clone(),
+        wheel4_scene: wheel4_scene.clone(),
     });
 
     let mut loading = LoadingHandles::default();
     loading.handles.push(player_scene.untyped());
     loading.handles.push(island_scene.untyped());
+    loading.handles.push(car_scene.untyped());
+    loading.handles.push(wheel1_scene.untyped());
+    loading.handles.push(wheel2_scene.untyped());
+    loading.handles.push(wheel3_scene.untyped());
+    loading.handles.push(wheel4_scene.untyped());
     loading.min_display = 0.5;
     commands.insert_resource(loading);
 }

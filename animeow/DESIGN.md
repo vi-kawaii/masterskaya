@@ -84,7 +84,7 @@ actor/ # сущности
 character.rs # общий персонаж (MovementStats, Health)
 player.rs # игрок
 npc.rs # NPC
-vehicle.rs # транспорт
+vehicle.rs # транспорт (визуальный каркас)
 shoot.rs # стрельба
 abilities.rs # скиллы
 health.rs # HP/статусы
@@ -259,11 +259,87 @@ Yaw/pitch от мыши, зум колесом, коллизия через rayc
 Элементы/статусы — позже.
 
 4.5. Транспорт
-Физика: raycast-vehicle на avian3d.
+**Статус: визуальный каркас готов.** Машина спавнится рядом
+с игроком, стоит на земле (пока — как `RigidBody::Dynamic`
+с кубическим коллайдером, без подвески и управления).
 
-Механика «сел / вышел»: переключение управляемой сущности.
+**Модели.** Кузов — `fast-car.glb`, колёса — `wheel1.glb`,
+`wheel2.glb`, `wheel3.glb`, `wheel4.glb`. Кузов — отдельный
+glTF, колёса — отдельные glTF. В `.blend`-файле
+(`art/models/fast-car.blend`) вся машина собрана целиком,
+экспорт делается по частям через `Include → Selected Objects`.
 
-Камера переключается между режимами.
+**Иерархия в ECS.**
+```
+VehicleRoot (RigidBody::Dynamic, Collider::cuboid, Transform)  ← физический корень
+├── VehicleBodyModel (WorldAssetRoot("fast-car.glb"), rotation=180° по Y)
+├── Wheel (Transform, Wheel { steerable, powered })              ← переднее левое
+│   └── WheelModel (WorldAssetRoot("wheel1.glb"))
+├── Wheel                                                         ← переднее правое
+│   └── WheelModel (WorldAssetRoot("wheel2.glb"))
+├── Wheel                                                         ← заднее левое
+│   └── WheelModel (WorldAssetRoot("wheel3.glb"))
+└── Wheel                                                         ← заднее правое
+    └── WheelModel (WorldAssetRoot("wheel4.glb"))
+```
+
+**Почему так:**
+- `VehicleRoot` — невидимое физическое тело. Модели — его дети,
+  отдельно от физики.
+- `Wheel` — пустой узел, точка для будущего raycast'а подвески
+  и держатель модели колеса. Позиция колеса задаётся здесь.
+- `WheelModel` — визуал колеса, `Transform::default()` (модель
+  в `.glb` уже в (0,0,0) с origin в центре).
+
+**Компоненты (`actor/vehicle.rs`):**
+- `VehicleRoot` — маркер корня.
+- `VehicleBodyModel` — маркер узла модели кузова.
+- `WheelModel` — маркер узла модели колеса.
+- `Wheel { steerable: bool, powered: bool }` — пустой узел
+  колеса. `steerable` — переднее (поворачивается рулём),
+  `powered` — ведущее (получает силу мотора).
+
+**Экспорт из Blender (правила):**
+- `.blend` содержит всю машину собранной.
+- Кузов: `Ctrl+A → All Transforms`, `Set Origin → Origin to Geometry`.
+- Колёса: `Ctrl+A → All Transforms`, `Set Origin → Origin to Geometry`,
+  `Alt+G` перед экспортом (обнулить позицию), `Ctrl+Z` после —
+  чтобы в `.glb` колесо приехало в (0,0,0).
+- Экспорт с `Include → Selected Objects`, `+Y Up`.
+- Порядок: `wheel1.glb` → FL, `wheel2.glb` → FR, `wheel3.glb` → BL,
+  `wheel4.glb` → BR.
+
+**Координаты колёс (из Blender-дампа `fast-car.blend`).**
+В осях Bevy (X влево/вправо, Y вверх/вниз, Z вперёд/назад):
+```
+FL: [ 0.953, -0.482, -1.234]
+FR: [-0.953, -0.482, -1.234]
+BL: [ 0.953, -0.482,  1.534]
+BR: [-0.953, -0.482,  1.534]
+```
+Перёд машины в Blender смотрит в −Y → после экспорта `+Y Up`
+это −Z в Bevy. Модель кузова развёрнута на 180° вокруг Y,
+чтобы «нос» смотрел в +Z (стандарт Bevy/Tnua).
+
+**Габариты кузова (из дампа):**
+- Blender dims (X, Y, Z) = (2.01, 4.89, 1.32)
+- Bevy dims (X, Y, Z) = (2.01, 1.32, 4.89)
+- Полуразмеры коллайдера: `(1.00, 0.66, 2.44)`.
+
+**Что ещё НЕ сделано:**
+- [ ] Подвеска (raycast от каждого `Wheel` вниз, пружина + демпфер).
+- [ ] Движение (газ/тормоз → сила к ведущим колёсам).
+- [ ] Поворот руля (`steerable`-колёса вращаются вокруг Y).
+- [ ] Кручение колёс (визуальное, по скорости).
+- [ ] Механика «сел / вышел» (переключение управляемой сущности).
+- [ ] Камера для режима вождения.
+- [ ] Переключение `TnuaController` игрока off, когда он в машине.
+
+**Планы по физике:**
+Физика: raycast-vehicle на avian3d. Машина — `RigidBody::Dynamic`
+(уже так). Каждое колесо пускает луч вниз, пружина + демпфер
+держат кузов на высоте. Ведущие колёса получают силу вдоль
+своего forward. `steerable`-колёса поворачиваются вокруг Y.
 
 Типы: машина → потом мото, лодка и т.д.
 
@@ -386,6 +462,9 @@ Esc в `InGameState::Playing` → `InGameState::Paused`. Esc обратно.
    ниже полвысоты капсулы + offset модели (§4.2)
    Промежуток Loading → модели на экране Отложено, требует
    проверки готовности RenderAssetUsages (§4.10)
+   Raycast-vehicle — сложная настройка подвески Начать с
+   визуального каркаса (§4.5), потом постепенно добавлять
+   физику: прилипание → газ/тормоз → руль → трение
 
 7. План работ
    Каждый этап заканчивается играбельным билдом.
@@ -418,7 +497,7 @@ Esc в `InGameState::Playing` → `InGameState::Paused`. Esc обратно.
 ☑ core/physics.rs: TnuaControllerPlugin + TnuaAvian3dPlugin
 ☑ core/physics.rs: конфиг схемы как ассет + handle в ресурсе
 ☑ modes/game/mod.rs: spawn_player_entity с TnuaController,
-  TnuaConfig, TnuaAvian3dSensorShape, LockedAxes
+TnuaConfig, TnuaAvian3dSensorShape, LockedAxes
 ☑ modes/game/mod.rs: IslandReady (scene + colliders) → finish_loading
 ☑ core/debug.rs: отладочный текст с координатами
 
@@ -458,11 +537,35 @@ Esc в `InGameState::Playing` → `InGameState::Paused`. Esc обратно.
 Этап 5. Vehicle
 Цель: сесть в машину, поехать, выйти.
 
-□ actor/vehicle.rs
-□ controller/vehicle.rs
-□ физика raycast-vehicle
-□ механика «сел / вышел»
-□ переключение камеры
+☑ Этап 5.1. Визуальный каркас
+☑ actor/vehicle.rs: компоненты VehicleRoot, VehicleBodyModel,
+WheelModel, Wheel { steerable, powered }
+☑ assets.rs: хендлы car_scene, wheel1..4_scene
+☑ modes/loading.rs: загрузка fast-car.glb и wheel1..4.glb
+☑ modes/game/mod.rs: spawn_vehicle — кузов + 4 колеса
+☑ Экспорт моделей из Blender по частям (Selected Objects, +Y Up)
+☑ Координаты колёс из Blender-дампа, ориентация кузова 180° по Y
+
+□ Этап 5.2. Прилипание к земле (подвеска)
+□ controller/vehicle.rs: VehicleControllerPlugin
+□ Raycast от каждого Wheel вниз
+□ Сила пружины + демпфер к RigidBody в точке колеса
+□ Настройка spring_strength, damper_strength, rest_length
+
+□ Этап 5.3. Движение (газ/тормоз)
+□ VehicleInput: педаль газа, тормоз
+□ Сила вперёд к powered-колёсам
+□ Настройка силы мотора
+
+□ Этап 5.4. Поворот руля
+□ VehicleInput: руль влево/вправо
+□ Поворот Transform у steerable-колёс вокруг Y
+□ Настройка угла поворота
+
+□ Этап 5.5. Камера и «сел / вышел»
+□ Режим камеры для машины
+□ Переключение активной сущности (Player ↔ Vehicle)
+□ Отключение TnuaController игрока, пока он в машине
 
 Этап 6. NPC + диалоги + квесты
 Цель: поговорить с NPC, взять квест, выполнить.
@@ -501,10 +604,13 @@ Esc в `InGameState::Playing` → `InGameState::Paused`. Esc обратно.
    types.rs — расширить.
    controller/player.rs — вокруг TnuaController.
    controller/scheme.rs — CharacterControlScheme + конфиг.
+   controller/vehicle.rs — VehicleControllerPlugin (Этап 5.2).
    core/physics.rs — PhysicsPlugins + Tnua + ассет конфига.
    modes/loading.rs — ручной счёт через AssetServer + UI.
    modes/pause.rs — Time<Virtual>::pause.
-   modes/game/mod.rs — IslandReady, finish_loading.
+   modes/game/mod.rs — IslandReady, finish_loading, spawn_vehicle.
+   actor/vehicle.rs — компоненты транспорта.
+   assets.rs — хендлы кузова и колёс.
    actor/*, controller/bot.rs, modes/game/{dialog,fight,hud,move_}.rs — пустые, наполнять по этапам.
 
 9. Журнал решений
@@ -594,6 +700,62 @@ InGame, UI без камеры не рендерится. `LoadingCamera` (Camer
 фона, потом модели. Отложено. Решения: (1) проверять
 `Assets::contains` для `Mesh3d`/`Image`, (2) ждать N кадров,
 (3) спец-хук на готовность рендера.
+
+**Vehicle: визуальный каркас отдельно от физики.**
+Кузов — `RigidBody::Dynamic` с `Collider::cuboid`, но **без**
+подвески и управления. Модели (кузов и колёса) — дети
+физического корня. Это разделение позволяет:
+- Сначала увидеть, что модель стоит на земле правильно.
+- Потом добавлять физику подвески отдельно.
+- Потом — движение и руль.
+
+**Vehicle: одно колесо = один `.glb`, а не сборка из
+`fast-car-wheel.glb`.** Изначально думали грузить одно колесо
+и зеркалить, но при наличии четырёх отдельных `wheelN.glb`
+проще грузить каждое как отдельный ассет. Плюс — если колёса
+визуально разные (диски), это сохраняется.
+
+**Vehicle: пустой узел Wheel между физическим корнем и моделью
+колеса.** `Wheel` — пустой `Transform`, держит позицию колеса
+относительно корня. Модель (`WheelModel`) — его ребёнок.
+Это нужно, потому что:
+- Позиция колеса задаётся **снаружи** модели (в `spawn_vehicle`),
+  а не внутри `.glb`. Так можно подгонять без переэкспорта.
+- Позже `steerable`-колёса будут крутиться вокруг Y — это
+  вращение родителя, а не модели.
+- Raycast подвески будет пускаться из `Wheel`, а не из модели.
+
+**Vehicle: координаты колёс из Blender-дампа, а не формулы.**
+Раньше в `spawn_vehicle` были формулы `half_length * 0.7` и т.п.
+После того как машина в Blender была собрана вручную, стало
+проще взять точные координаты. Формулы убраны.
+
+**Vehicle: модель кузова повёрнута на 180° вокруг Y.**
+В Blender перёд машины смотрит в −Y, после `+Y Up` — в −Z.
+Стандарт Bevy/Tnua — +Z. Поворачиваем модель кузова в
+`spawn_vehicle`, а координаты колёс оставляем как есть —
+они уже выстроены относительно корня, и перёд машины — тот,
+где стоят передние колёса (−Z).
+
+**Vehicle: экспорт из Blender по частям, обнуляя позиции колёс.**
+В `.blend` машина собрана целиком (кузов + 4 колеса). При
+экспорте `Selected Objects` каждого колеса отдельно позиция
+сохраняется из Blender — иначе в Bevy было бы двойное смещение
+(сначала позиция `Wheel`, потом позиция внутри `.glb`). Порядок:
+`Alt+G` (обнулить) → Export → `Ctrl+Z` (вернуть). Также
+`Ctrl+A → All Transforms` и `Set Origin → Origin to Geometry`
+для правильного origin.
+
+**Vehicle: glTF-экспорт с `+Y Up` обязателен.** Без него
+машина приедет в Bevy на боку — Blender работает в Z-up,
+Bevy в Y-up.
+
+**Vehicle: коллайдер кузова `Collider::cuboid(1.00, 0.66, 2.44)`.**
+Полугабариты из дампа: dims в Bevy = (2.01, 1.32, 4.89), значит
+полу = (1.00, 0.66, 2.44). Коллайдер — приблизительный (cuboid),
+не совпадает с визуалом точно. Для статики и raycast-подвески
+этого достаточно. Позже можно заменить на convex hull, если
+понадобится точность.
 
 10. Инструменты разработки (lab)
     Воркфлоу сборки контекста и применения ответов DeepSeek

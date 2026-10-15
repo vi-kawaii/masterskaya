@@ -3,6 +3,7 @@ pub mod fight;
 pub mod hud;
 pub mod move_;
 
+use crate::actor::vehicle::{VehicleBodyModel, VehicleRoot, Wheel, WheelModel};
 use crate::assets::GameAssets;
 use crate::controller::scheme::CharacterControlScheme;
 use crate::core::physics::CharacterControlConfigHandle;
@@ -90,8 +91,9 @@ pub fn on_island_ready(
         return;
     }
 
-    println!("[game] on_island_ready — коллайдеры готовы, спавним игрока");
+    println!("[game] on_island_ready — коллайдеры готовы, спавним игрока и машину");
     spawn_player_entity(&mut commands, &assets, &config_handle);
+    spawn_vehicle(&mut commands, &assets);
     ready.colliders_ready = true;
     ready.player_spawned = true;
 }
@@ -156,6 +158,86 @@ pub fn spawn_player_entity(
                 WorldAssetRoot(assets.player_scene.clone()),
                 Transform::from_xyz(0.0, -0.92, 0.0)
                     .with_rotation(Quat::from_rotation_y(MODEL_YAW_OFFSET)),
+            ));
+        });
+}
+
+/// Спавнит машину рядом с игроком.
+///
+/// ВАЖНО:
+///   - В Blender у fast-car.glb перёд машины смотрит в −Y.
+///   - После экспорта `+Y Up` это означает, что в Bevy перёд машины
+///     смотрит в −Z. Стандарт Bevy/Tnua — +Z. Поэтому:
+///       1) крутим модель кузова на 180° вокруг Y;
+///       2) координаты колёс у нас уже из Blender (перёд = −Z там),
+///          но после разворота кузова передние колёса снова должны
+///          быть на −Z (они и есть передние). Так что колёса НЕ трогаем.
+///
+/// Если в игре колёса всё равно окажутся не на месте — поменяйте знак Z
+/// у всех четырёх в `wheel_positions`.
+pub fn spawn_vehicle(commands: &mut Commands, assets: &GameAssets) {
+    println!("[game] spawn_vehicle");
+
+    // Полугабариты кузова. Из дампа Blender: dims (2.01, 1.32, 4.89) в осях Bevy.
+    // Полуразмеры:
+    let half_width  = 1.00;
+    let half_height = 0.66;
+    let half_length = 2.44;
+
+    commands
+        .spawn((
+            VehicleRoot,
+            RigidBody::Dynamic,
+            Collider::cuboid(half_width, half_height, half_length),
+            Transform::from_xyz(4.0, 3.0, 0.0),
+            Visibility::default(),
+        ))
+        .with_children(|parent| {
+            // --- Кузов ---
+            // Разворачиваем на 180° вокруг Y, чтобы "нос" смотрел в +Z.
+            parent.spawn((
+                VehicleBodyModel,
+                WorldAssetRoot(assets.car_scene.clone()),
+                Transform::default()
+                    .with_rotation(Quat::from_rotation_y(std::f32::consts::PI)),
+            ));
+
+            // --- Колёса ---
+            // Координаты из Blender (оси уже переведены в Bevy).
+            // Передние: Z = −1.234, задние: Z = +1.534.
+            // Подставьте свои wheelN.glb в правильном порядке.
+            let wheel_positions: [[f32; 3]; 4] = [
+                [ 0.953, -0.482, -1.234], // FL — переднее левое
+                [-0.953, -0.482, -1.234], // FR — переднее правое
+                [ 0.953, -0.482,  1.534], // BL — заднее левое
+                [-0.953, -0.482,  1.534], // BR — заднее правое
+            ];
+
+            spawn_wheel(parent, &assets.wheel1_scene, wheel_positions[0], true,  true);
+            spawn_wheel(parent, &assets.wheel2_scene, wheel_positions[1], true,  true);
+            spawn_wheel(parent, &assets.wheel3_scene, wheel_positions[2], false, true);
+            spawn_wheel(parent, &assets.wheel4_scene, wheel_positions[3], false, true);
+        });
+}
+
+fn spawn_wheel(
+    parent: &mut ChildSpawnerCommands,
+    wheel_scene: &Handle<WorldAsset>,
+    position: [f32; 3],
+    steerable: bool,
+    powered: bool,
+) {
+    parent
+        .spawn((
+            Wheel { steerable, powered },
+            Transform::from_xyz(position[0], position[1], position[2]),
+            Visibility::default(),
+        ))
+        .with_children(|wheel_parent| {
+            wheel_parent.spawn((
+                WheelModel,
+                WorldAssetRoot(wheel_scene.clone()),
+                Transform::default(),
             ));
         });
 }
