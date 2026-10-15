@@ -1,0 +1,40 @@
+(
+    id: "npc_test_1",
+    start_node: "start",
+    nodes: {
+        "start": (
+            text: "Привет, путник! Что тебе нужно?",
+            options: [
+                (
+                    text: "Мне нужна помощь.",
+                    next_node: "help",
+                ),
+                (
+                    text: "Просто прохожу мимо.",
+                    next_node: "bye",
+                ),
+            ],
+        ),
+        "help": (
+            text: "Я могу подсказать дорогу. Куда тебе нужно?",
+            options: [
+                (
+                    text: "К ближайшей деревне.",
+                    next_node: "village",
+                ),
+                (
+                    text: "Никуда, спасибо.",
+                    next_node: "bye",
+                ),
+            ],
+        ),
+        "village": (
+            text: "Иди на север, там будет река, а за ней — деревня.",
+            options: [],
+        ),
+        "bye": (
+            text: "Хорошего пути!",
+            options: [],
+        ),
+    },
+)

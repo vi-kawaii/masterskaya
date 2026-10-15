@@ -23,6 +23,9 @@ struct PauseUi;
 /// `Time<Virtual>::pause()` останавливает и `Time`, и `Time<Fixed>`.
 /// Дополнительно сбрасываем аккумулятор `Time<Fixed>`, чтобы не было
 /// «хвоста» из уже накопленной, но не потраченной дельты.
+///
+/// Важно: Esc в диалоге обрабатывается самим диалогом (закрытие),
+/// поэтому здесь мы реагируем на Esc только в Playing/Paused.
 fn toggle_pause(
     keys: Res<ButtonInput<KeyCode>>,
     current: Res<State<InGameState>>,
@@ -37,8 +40,6 @@ fn toggle_pause(
         InGameState::Playing => {
             println!("[pause] time paused");
             virtual_time.pause();
-            // Сбросить накопленный overstep FixedUpdate,
-            // чтобы не было «догоняющих» тиков физики после паузы.
             fixed_time.discard_overstep(Duration::MAX);
             next.set(InGameState::Paused);
         }
@@ -47,6 +48,8 @@ fn toggle_pause(
             virtual_time.unpause();
             next.set(InGameState::Playing);
         }
+        // В диалоге Esc закрывает диалог, а не ставит на паузу.
+        InGameState::Dialog => {}
     }
 }
 

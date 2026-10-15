@@ -24,6 +24,7 @@ impl Plugin for GamePlugin {
         app.init_resource::<crate::types::GameSettings>()
             .init_resource::<crate::types::Score>()
             .init_resource::<IslandReady>()
+            .add_plugins(dialog::DialogPlugin)
             .add_systems(
                 Update,
                 finish_loading.run_if(in_state(GameState::Loading)),
@@ -178,8 +179,6 @@ pub fn spawn_player_entity(
 pub fn spawn_vehicle(commands: &mut Commands, assets: &GameAssets) {
     println!("[game] spawn_vehicle");
 
-    // Полугабариты кузова. Из дампа Blender: dims (2.01, 1.32, 4.89) в осях Bevy.
-    // Полуразмеры:
     let half_width  = 1.00;
     let half_height = 0.66;
     let half_length = 2.44;
@@ -193,8 +192,6 @@ pub fn spawn_vehicle(commands: &mut Commands, assets: &GameAssets) {
             Visibility::default(),
         ))
         .with_children(|parent| {
-            // --- Кузов ---
-            // Разворачиваем на 180° вокруг Y, чтобы "нос" смотрел в +Z.
             parent.spawn((
                 VehicleBodyModel,
                 WorldAssetRoot(assets.car_scene.clone()),
@@ -202,15 +199,11 @@ pub fn spawn_vehicle(commands: &mut Commands, assets: &GameAssets) {
                     .with_rotation(Quat::from_rotation_y(std::f32::consts::PI)),
             ));
 
-            // --- Колёса ---
-            // Координаты из Blender (оси уже переведены в Bevy).
-            // Передние: Z = −1.234, задние: Z = +1.534.
-            // Подставьте свои wheelN.glb в правильном порядке.
             let wheel_positions: [[f32; 3]; 4] = [
-                [ 0.953, -0.482, -1.234], // FL — переднее левое
-                [-0.953, -0.482, -1.234], // FR — переднее правое
-                [ 0.953, -0.482,  1.534], // BL — заднее левое
-                [-0.953, -0.482,  1.534], // BR — заднее правое
+                [ 0.953, -0.482, -1.234],
+                [-0.953, -0.482, -1.234],
+                [ 0.953, -0.482,  1.534],
+                [-0.953, -0.482,  1.534],
             ];
 
             spawn_wheel(parent, &assets.wheel1_scene, wheel_positions[0], true,  true);

@@ -297,6 +297,7 @@ dependencies = [
  "bevy_asset",
  "blake3",
  "lab-app-shell",
+ "serde",
 ]
 
 [[package]]

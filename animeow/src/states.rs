@@ -15,4 +15,5 @@ pub enum InGameState {
     #[default]
     Playing,
     Paused,
+    Dialog,
 }
