@@ -1,0 +1,61 @@
+(
+    format_version: 1,
+    name: "untitled",
+    objects: [
+        (
+            id: 0,
+            name: "Triangle A",
+            vertices: [
+                (
+                    position: (0.0, 100.0, 0.0),
+                    color: (1.0, 0.0, 0.0, 1.0),
+                ),
+                (
+                    position: (-86.60254, -50.0, 0.0),
+                    color: (0.0, 1.0, 0.0, 1.0),
+                ),
+                (
+                    position: (86.60254, -50.0, 0.0),
+                    color: (0.0, 0.0, 1.0, 1.0),
+                ),
+            ],
+            indices: [],
+            transform: (
+                translation: (98.05076, 61.782997, 0.0),
+                rotation_deg: (0.0, 0.0, 50.413673),
+                scale: (2.0242925, 2.0242925, 2.0242925),
+            ),
+            playback: (
+                spin_speed: 1.5,
+            ),
+        ),
+        (
+            id: 1,
+            name: "Triangle B",
+            vertices: [
+                (
+                    position: (0.0, 50.0, 0.0),
+                    color: (1.0, 0.0, 0.0, 1.0),
+                ),
+                (
+                    position: (-43.30127, -25.0, 0.0),
+                    color: (0.0, 1.0, 0.0, 1.0),
+                ),
+                (
+                    position: (43.30127, -25.0, 0.0),
+                    color: (0.0, 0.0, 1.0, 1.0),
+                ),
+            ],
+            indices: [],
+            transform: (
+                translation: (-200.0, 0.0, 0.0),
+                rotation_deg: (0.0, 0.0, 0.0),
+                scale: (1.0, 1.0, 1.0),
+            ),
+            playback: (
+                spin_speed: 0.0,
+            ),
+        ),
+    ],
+    next_id: 2,
+)

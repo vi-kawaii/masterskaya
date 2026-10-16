@@ -7,5 +7,6 @@ edition.workspace = true
 bevy = { workspace = true, features = ["bevy_dev_tools"] }
 bevy_asset.workspace = true
 serde.workspace = true
+ron.workspace = true
 lab-app-shell = { path = "../libs/app-shell" }
 naga = { version = "27", features = ["termcolor"] }

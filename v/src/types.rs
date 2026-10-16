@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
 
 // ============================================================
 //  СЕРИАЛИЗУЕМЫЕ ДАННЫЕ (то, что попадёт в .ron)
@@ -48,15 +50,33 @@ pub struct MeshObject {
     pub playback: PlaybackData,
 }
 
+/// Текущая версия формата документа.
+/// Меняем при несовместимых изменениях структуры.
+pub const DOCUMENT_FORMAT_VERSION: u32 = 1;
+
 /// Документ проекта — единственный источник истины для "базовой позы".
 #[derive(Resource, Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VtuberDocument {
+    /// Версия формата. Служит и для миграций, и как «сигнатура файла».
+    /// Старые файлы без поля парсятся с `default = 0`.
+    #[serde(default)]
+    pub format_version: u32,
     pub name: String,
     pub objects: Vec<MeshObject>,
     pub next_id: u64,
 }
 
 impl VtuberDocument {
+    /// Создать пустой документ с актуальной версией формата.
+    pub fn new_empty(name: impl Into<String>) -> Self {
+        Self {
+            format_version: DOCUMENT_FORMAT_VERSION,
+            name: name.into(),
+            objects: Vec::new(),
+            next_id: 0,
+        }
+    }
+
     pub fn add_object(&mut self, mut obj: MeshObject) -> u64 {
         obj.id = self.next_id;
         self.next_id += 1;
@@ -71,6 +91,53 @@ impl VtuberDocument {
 
     pub fn get_mut(&mut self, id: u64) -> Option<&mut MeshObject> {
         self.objects.iter_mut().find(|o| o.id == id)
+    }
+
+    /// Записать документ в RON-файл.
+    /// `pretty` — многострочно, читаемо; для отладки удобнее.
+    pub fn save_to_file(&self, path: impl AsRef<Path>) -> Result<(), String> {
+        let path = path.as_ref();
+
+        // Клонируем и выставляем актуальную версию — на случай, если
+        // документ был создан до появления format_version или его
+        // версия «застряла» на старой.
+        let mut to_save = self.clone();
+        to_save.format_version = DOCUMENT_FORMAT_VERSION;
+
+        let text = ron::ser::to_string_pretty(
+            &to_save,
+            ron::ser::PrettyConfig::default(),
+        )
+        .map_err(|e| format!("RON serialize: {e}"))?;
+
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("create_dir_all {}: {e}", parent.display()))?;
+            }
+        }
+
+        fs::write(path, text).map_err(|e| format!("write {}: {e}", path.display()))?;
+        Ok(())
+    }
+
+    /// Прочитать документ из RON-файла.
+    pub fn load_from_file(path: impl AsRef<Path>) -> Result<Self, String> {
+        let path = path.as_ref();
+        let text = fs::read_to_string(path)
+            .map_err(|e| format!("read {}: {e}", path.display()))?;
+
+        let doc: Self = ron::from_str(&text)
+            .map_err(|e| format!("RON parse {}: {e}", path.display()))?;
+
+        if doc.format_version > DOCUMENT_FORMAT_VERSION {
+            return Err(format!(
+                "файл новее, чем редактор: format_version={}, supported={}",
+                doc.format_version, DOCUMENT_FORMAT_VERSION
+            ));
+        }
+
+        Ok(doc)
     }
 }
 

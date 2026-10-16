@@ -11987,6 +11987,7 @@ dependencies = [
  "bevy_asset",
  "lab-app-shell",
  "naga 27.0.3",
+ "ron 0.12.2",
  "serde",
 ]
 

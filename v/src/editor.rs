@@ -10,9 +10,14 @@ impl Plugin for EditorPlugin {
         app.init_resource::<LiveEditEnabled>()
             // Работает И в Editing, И в Playing (real-time editing).
             // Фильтр по Loading — только чтобы не мешать загрузке.
+            // `sync_transforms` теперь живёт в ScenePlugin.
             .add_systems(
                 Update,
-                (editor_move_system, sync_transforms)
+                (
+                    editor_move_system,
+                    editor_rotate_system,
+                    editor_scale_system,
+                )
                     .run_if(not(in_state(crate::states::AppState::Loading))),
             );
     }
@@ -29,8 +34,6 @@ fn editor_move_system(
     selected: Query<&MeshObjectId, With<Selected>>,
 ) {
     if !live.0 {
-        // Когда выключим live-edit, здесь будем писать в Runtime, а не в doc.
-        // Пока оставляем заглушку.
         return;
     }
 
@@ -50,36 +53,93 @@ fn editor_move_system(
     }
 }
 
-/// Применяет базовый трансформ из документа к ECS.
-/// В Play НЕ трогает rotation/scale — их держит Playback (base ⊕ runtime).
-/// В Editing применяет всё.
-fn sync_transforms(
-    mut ev: MessageReader<SyncTransforms>,
-    state: Res<State<crate::states::AppState>>,
-    doc: Res<VtuberDocument>,
-    mut q: Query<(&MeshObjectId, &mut Transform)>,
+/// Поворот выделенного объекта: `Q` — против часовой, `E` — по часовой.
+/// Крутим вокруг локальной оси Z (2D-плоскость), поэтому меняем только
+/// `rotation_deg[2]`.
+///
+/// `sync_transforms` в Editing применит поворот к ECS; в Playing поворот
+/// базового трансформа ставится при входе в Play (`rebuild_scene`), а
+/// runtime-слой спиновый и живёт отдельно (см. `playback_system`).
+fn editor_rotate_system(
+    keys: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
+    live: Res<LiveEditEnabled>,
+    mut doc: ResMut<VtuberDocument>,
+    mut sync_ev: MessageWriter<SyncTransforms>,
+    selected: Query<&MeshObjectId, With<Selected>>,
 ) {
-    if ev.read().count() == 0 {
+    if !live.0 {
         return;
     }
 
-    let in_play = matches!(state.get(), crate::states::AppState::Playing);
+    let speed_deg = 90.0 * time.delta_secs();
+    let mut rotated = false;
 
-    for (id, mut t) in &mut q {
-        if let Some(obj) = doc.get(id.0) {
-            t.translation = Vec3::from(obj.transform.translation);
-
-            // В Play rotation/scale принадлежат Playback'у.
-            // Синхронизатор их не трогает, чтобы не конфликтовать.
-            if !in_play {
-                t.rotation = Quat::from_euler(
-                    EulerRot::XYZ,
-                    obj.transform.rotation_deg[0].to_radians(),
-                    obj.transform.rotation_deg[1].to_radians(),
-                    obj.transform.rotation_deg[2].to_radians(),
-                );
-                t.scale = Vec3::from(obj.transform.scale);
+    for id in &selected {
+        if let Some(obj) = doc.get_mut(id.0) {
+            if keys.pressed(KeyCode::KeyQ) {
+                obj.transform.rotation_deg[2] -= speed_deg;
+                rotated = true;
+            }
+            if keys.pressed(KeyCode::KeyE) {
+                obj.transform.rotation_deg[2] += speed_deg;
+                rotated = true;
             }
         }
+    }
+    if rotated {
+        sync_ev.write(SyncTransforms);
+    }
+}
+
+/// Масштаб выделенного объекта: `[` — уменьшить, `]` — увеличить.
+/// Меняем по обеим осям (X, Y) одинаково, чтобы сохранять пропорции.
+/// Клэмпим в разумных пределах, чтобы объект не исчез и не заполнил экран.
+fn editor_scale_system(
+    keys: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
+    live: Res<LiveEditEnabled>,
+    mut doc: ResMut<VtuberDocument>,
+    mut sync_ev: MessageWriter<SyncTransforms>,
+    selected: Query<&MeshObjectId, With<Selected>>,
+) {
+    if !live.0 {
+        return;
+    }
+
+    const MIN_SCALE: f32 = 0.1;
+    const MAX_SCALE: f32 = 10.0;
+
+    let factor_per_sec = 1.0_f32; // 1.0 = ничего, растёт/падает экспоненциально
+    let dt = time.delta_secs();
+    let mut scaled = false;
+
+    // [ уменьшает, ] увеличивает. Используем экспоненту:
+    // new = old * exp(-k*dt) или exp(+k*dt). Так масштаб никогда не уйдёт в 0.
+    let down = keys.pressed(KeyCode::BracketLeft);
+    let up = keys.pressed(KeyCode::BracketRight);
+
+    if !down && !up {
+        return;
+    }
+
+    let k = 2.0 * factor_per_sec; // скорость
+    let factor = if up {
+        (k * dt).exp()
+    } else {
+        (-k * dt).exp()
+    };
+
+    for id in &selected {
+        if let Some(obj) = doc.get_mut(id.0) {
+            let s = &mut obj.transform.scale;
+            s[0] = (s[0] * factor).clamp(MIN_SCALE, MAX_SCALE);
+            s[1] = (s[1] * factor).clamp(MIN_SCALE, MAX_SCALE);
+            s[2] = (s[2] * factor).clamp(MIN_SCALE, MAX_SCALE);
+            scaled = true;
+        }
+    }
+    if scaled {
+        sync_ev.write(SyncTransforms);
     }
 }
