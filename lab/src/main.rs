@@ -2,6 +2,7 @@ mod commit;
 mod dump;
 mod paste;
 mod run;
+mod serve;
 
 use std::process::ExitCode;
 
@@ -17,9 +18,12 @@ fn main() -> ExitCode {
     let cmd = match std::env::args().nth(1) {
         Some(c) => c,
         None => {
-            eprintln!("usage: lab <dump|paste|commit|run>");
-            eprintln!("  paste [-r|--restart]      — применить файлы и (опц.) перезапустить проект");
-            eprintln!("  run [--once] [<package>]  — запустить проект; --once без цикла");
+            eprintln!("usage: lab <dump|paste|commit|run|serve>");
+            eprintln!("  dump                     — собрать контекст мастерской в буфер");
+            eprintln!("  paste [-r|--restart]     — применить файлы и (опц.) перезапустить проект");
+            eprintln!("  commit                   — умный коммит по мастерской");
+            eprintln!("  run [--once] [<package>] — запустить проект; --once без цикла");
+            eprintln!("  serve                    — поднять локальный сервер для браузера");
             return ExitCode::FAILURE;
         }
     };
@@ -29,7 +33,6 @@ fn main() -> ExitCode {
     let mut run_package: Option<String> = None;
     let mut paste_restart = false;
 
-    // Парсим аргументы в зависимости от команды.
     match cmd.as_str() {
         "paste" => {
             for a in &args {
@@ -60,9 +63,7 @@ fn main() -> ExitCode {
                 }
             }
         }
-        _ => {
-            // dump/commit не принимают аргументов.
-        }
+        _ => {}
     }
 
     let result = match cmd.as_str() {
@@ -76,9 +77,10 @@ fn main() -> ExitCode {
                 once: run_once,
             },
         ),
+        "serve" => serve::run(&cwd),
         other => {
             eprintln!("❌ lab: неизвестная команда '{other}'");
-            eprintln!("   Доступно: dump, paste, commit, run");
+            eprintln!("   Доступно: dump, paste, commit, run, serve");
             return ExitCode::FAILURE;
         }
     };

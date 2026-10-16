@@ -3,6 +3,7 @@ mod assets;
 mod controller;
 mod core;
 mod modes;
+mod quest;
 mod states;
 mod types;
 mod ui;
@@ -31,6 +32,7 @@ fn main() {
             actor::ActorPlugin,
             controller::ControllerPlugin,
             ui::UiPlugin,
+            quest::QuestPlugin,
         ));
 
     app.run();

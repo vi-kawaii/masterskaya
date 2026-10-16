@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 use crate::actor::weapon::{PlayerLoadout, WeaponState};
 use crate::assets::GameAssets;
+use crate::quest::QuestLog;
 use crate::states::{GameState, InGameState};
 
 pub struct HudPlugin;
@@ -11,10 +12,25 @@ impl Plugin for HudPlugin {
         app.init_resource::<PlayerLoadout>()
             .add_systems(OnEnter(GameState::InGame), setup_hud)
             .add_systems(OnExit(GameState::InGame), cleanup_hud)
+            // Combat HUD updates: only in Playing. Weapon switching
+            // and ammo refreshes make no sense during a dialog or pause.
             .add_systems(
                 Update,
                 (switch_weapon, update_hud_text)
                     .run_if(in_state(InGameState::Playing)),
+            )
+            // Quest HUD updates: in every in-game substate (Playing,
+            // Paused, Dialog), because quests advance from dialogs too.
+            // Without this, the tracker moves the quest but the panel
+            // stays frozen until the player leaves the dialog.
+            .add_systems(
+                Update,
+                update_quest_hud.run_if(in_state(GameState::InGame)),
+            )
+            // Hide the whole HUD while a dialog is open.
+            .add_systems(
+                Update,
+                toggle_hud_on_dialog.run_if(in_state(GameState::InGame)),
             );
     }
 }
@@ -33,6 +49,9 @@ struct HudHp;
 
 #[derive(Component)]
 struct HudCrosshair;
+
+#[derive(Component)]
+struct HudQuestText;
 
 fn setup_hud(
     mut commands: Commands,
@@ -134,6 +153,22 @@ fn setup_hud(
                     ..default()
                 },
             ));
+
+            parent.spawn((
+                HudQuestText,
+                Text::new(""),
+                TextFont {
+                    font_size: FontSize::Px(18.0),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.9, 0.9, 0.6)),
+                Node {
+                    position_type: PositionType::Absolute,
+                    top: Val::Px(48.0),
+                    left: Val::Px(16.0),
+                    ..default()
+                },
+            ));
         });
 }
 
@@ -188,6 +223,45 @@ fn update_hud_text(
         let s = "HP: 100 / 100".to_string();
         if text.0 != s {
             text.0 = s;
+        }
+    }
+}
+
+fn update_quest_hud(
+    log: Res<QuestLog>,
+    mut q: Query<&mut Text, With<HudQuestText>>,
+) {
+    let s = match log.first_active() {
+        Some(active) => match active.current() {
+            Some(step) => format!("{}\n> {}", active.def.name, step.description),
+            None => format!("{}\n(completing...)", active.def.name),
+        },
+        None => String::new(),
+    };
+
+    if let Ok(mut text) = q.single_mut() {
+        if text.0 != s {
+            text.0 = s;
+        }
+    }
+}
+
+/// Hide the whole HUD while a dialog is open.
+///
+/// `Visibility::Hidden` on `HudRoot` propagates to children, so a single
+/// query is enough. Runs on every `GameState::InGame` substate so the
+/// switch reacts to `Playing ⇄ Dialog` transitions.
+fn toggle_hud_on_dialog(
+    state: Res<State<InGameState>>,
+    mut q: Query<&mut Visibility, With<HudRoot>>,
+) {
+    let want = match state.get() {
+        InGameState::Dialog => Visibility::Hidden,
+        _ => Visibility::Visible,
+    };
+    for mut vis in &mut q {
+        if *vis != want {
+            *vis = want;
         }
     }
 }

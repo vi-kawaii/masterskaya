@@ -3,7 +3,23 @@ use std::fs;
 use std::path::Path;
 use walkdir::WalkDir;
 
+/// Собрать контекст и положить в буфер обмена.
 pub fn run(cwd: &Path) -> Result<(), String> {
+    let output = collect(cwd)?;
+    match Clipboard::new() {
+        Ok(mut cb) => match cb.set_text(output.clone()) {
+            Ok(_) => {
+                println!("✅ Контекст скопирован в буфер ({} KB)", output.len() / 1024);
+                Ok(())
+            }
+            Err(e) => Err(format!("не могу записать в буфер: {e}")),
+        },
+        Err(e) => Err(format!("нет доступа к буферу: {e}")),
+    }
+}
+
+/// Собрать контекст как строку, без побочных эффектов.
+pub fn collect(cwd: &Path) -> Result<String, String> {
     let include_ext = [
         "rs", "toml", "md", "json", "yaml", "yml", "js", "ts", "tsx", "jsx", "html", "css",
         "sql", "sh", "ron", "wgsl", "txt", "xml", "lock",
@@ -55,15 +71,5 @@ pub fn run(cwd: &Path) -> Result<(), String> {
         output.push('\n');
     }
 
-    // 3. В буфер
-    match Clipboard::new() {
-        Ok(mut cb) => match cb.set_text(output.clone()) {
-            Ok(_) => {
-                println!("✅ Контекст скопирован в буфер ({} KB)", output.len() / 1024);
-                Ok(())
-            }
-            Err(e) => Err(format!("не могу записать в буфер: {e}")),
-        },
-        Err(e) => Err(format!("нет доступа к буферу: {e}")),
-    }
+    Ok(output)
 }

@@ -1,5 +1,6 @@
 use crate::actor::weapon::WeaponDef;
 use crate::assets::GameAssets;
+use crate::quest::QuestDef;
 use crate::states::GameState;
 use bevy::asset::LoadState;
 use bevy::prelude::*;
@@ -10,6 +11,7 @@ pub struct LoadingPlugin;
 impl Plugin for LoadingPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(RonAssetPlugin::<WeaponDef>::new(&["weapon.ron"]))
+            .add_plugins(RonAssetPlugin::<QuestDef>::new(&["quest.ron"]))
             .add_systems(Startup, spawn_loading_camera)
             .add_systems(OnEnter(GameState::Loading), (setup_loading, start_loading))
             .add_systems(
@@ -129,6 +131,9 @@ fn start_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
     let weapon_shotgun: Handle<WeaponDef> =
         asset_server.load("weapons/shotgun.weapon.ron");
 
+    let quest_first_steps: Handle<QuestDef> =
+        asset_server.load("quests/first_steps.quest.ron");
+
     commands.insert_resource(GameAssets {
         player_scene: player_scene.clone(),
         island_scene: island_scene.clone(),
@@ -140,6 +145,7 @@ fn start_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
         weapon_pistol: weapon_pistol.clone(),
         weapon_rifle: weapon_rifle.clone(),
         weapon_shotgun: weapon_shotgun.clone(),
+        quest_first_steps: quest_first_steps.clone(),
     });
 
     let mut loading = LoadingHandles::default();
@@ -153,6 +159,7 @@ fn start_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
     loading.handles.push(weapon_pistol.untyped());
     loading.handles.push(weapon_rifle.untyped());
     loading.handles.push(weapon_shotgun.untyped());
+    loading.handles.push(quest_first_steps.untyped());
     loading.min_display = 0.5;
     commands.insert_resource(loading);
 }

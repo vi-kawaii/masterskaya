@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use serde::Deserialize;
 use std::collections::HashMap;
 
+use crate::quest::QuestEvent;
 use crate::states::InGameState;
 
 pub struct DialogPlugin;
@@ -218,6 +219,7 @@ fn handle_dialog_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut active_dialog: ResMut<ActiveDialog>,
     mut next_state: ResMut<NextState<InGameState>>,
+    mut quest_ev: MessageWriter<QuestEvent>,
 ) {
     // Esc — force-close the dialog.
     if keys.just_pressed(KeyCode::Escape) {
@@ -245,6 +247,10 @@ fn handle_dialog_input(
 
     let Some(idx) = selected else { return };
     let Some(opt) = node.options.get(idx) else { return };
+
+    // Emit a quest event: the player has "heard" this line and moved on.
+    // If any quest is waiting for TalkTo("<next_node>") — it will advance.
+    quest_ev.write(QuestEvent::TalkedTo(opt.next_node.clone()));
 
     // Empty next_node or a missing node = end of dialog.
     if opt.next_node.is_empty() || !tree.nodes.contains_key(&opt.next_node) {

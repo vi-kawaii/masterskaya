@@ -1,0 +1,21 @@
+(
+    id: "first_steps",
+    name: "First Steps",
+    description: "Talk to the NPC and find your way to the village.",
+    steps: [
+        (
+            id: "talk_to_npc",
+            description: "Talk to the NPC",
+            target: TalkTo("help"),
+        ),
+        (
+            id: "reach_village",
+            description: "Reach the village",
+            target: TalkTo("village"),
+        ),
+    ],
+    rewards: (
+        xp: 100,
+        items: ["pistol"],
+    ),
+)

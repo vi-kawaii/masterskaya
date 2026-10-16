@@ -3,3 +3,4 @@ target/
 
 # lab
 .lab_run_cache
+.lab_serve_config
